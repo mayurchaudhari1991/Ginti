@@ -1,56 +1,66 @@
-# Welcome to your Expo app 👋
+# Ginti
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Expense tracker with month, year, bank, cash and category views, biometric lock, and a private AI assistant running on your own PC through Ollama.
 
-## Get started
+Built with Expo SDK 58 (React Native 0.88), Expo Router, Reanimated 4 CSS animations, react-native-svg and Supabase.
 
-1. Install dependencies
+## One-time setup
 
-   ```bash
-   npm install
+### 1. Supabase
+
+1. Open the SQL editor for the project and run `supabase/migrations/0001_init.sql`. It creates the tables, row level security, balances view, and a trigger that gives each new user a cash wallet and default categories.
+2. Authentication → Email Templates → **Magic Link**: put `{{ .Token }}` in the body so the email carries the 6-digit login code the app asks for.
+3. Copy the publishable key (Project Settings → API Keys) into `.env.local`:
+
+   ```
+   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
    ```
 
-2. Start the app
+   `.env.example` lists every variable. The publishable key is safe in the app; never put the secret key or database password there.
 
-   ```bash
-   npx expo start
-   ```
+### 2. Phone (OnePlus 13R)
 
-In the output, you'll find options to open the app in a
+1. Settings → About device → Version → tap **Build number** seven times.
+2. Settings → System → Developer options → turn on **USB debugging**.
+3. Reconnect the cable and accept the "Allow USB debugging" prompt.
+4. Check with `%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe devices`.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+### 3. Ollama
 
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+The app talks to Ollama at `EXPO_PUBLIC_OLLAMA_URL` (changeable in Settings) using `gemma4:e2b`.
 
-## Get a fresh project
+- **Over USB (dev):** `adb reverse tcp:11434 tcp:11434`, then set the URL in Settings to `http://localhost:11434`.
+- **Over Wi-Fi:** Ollama must listen on the network. Set the user environment variable `OLLAMA_HOST=0.0.0.0`, restart Ollama, and allow inbound TCP 11434 on private networks in Windows Firewall. Then use `http://<PC IP>:11434`.
 
-When you're ready, run:
+If Ollama is unreachable, adding expenses still works with an on-phone keyword parser; only the chat needs the PC.
 
-```bash
-npm run reset-project
+## Run
+
+```
+npm install
+npx expo start --android     # opens on the USB-connected phone in Expo Go
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+Expo Go runs everything except auto-import, which needs the native `modules/ginti-inbox` module and therefore the real APK.
 
-### Other setup steps
+## Shareable APK
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```
+npx expo prebuild --platform android
+cd android
+gradlew.bat assembleRelease -PreactNativeArchitectures=arm64-v8a
+```
 
-## Learn more
+The APK lands in `android/app/build/outputs/apk/release/app-release.apk`. Build from a short path such as `F:\g`: React Native's C++ object paths exceed Windows' 260-character limit under longer folders. The release is signed with this PC's debug key, which is fine for sideloading; the Play Store needs a proper upload key.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Auto-import
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+`modules/ginti-inbox` is a local Expo module that reads bank SMS (`READ_SMS`) and listens for notifications from Google Pay, PhonePe, Paytm and bank apps. `src/lib/inbox-parse.ts` turns those into entries, merges the SMS and the app notification for the same payment, and queues them for review in Settings → Auto-import. Nothing leaves the phone until the user approves an entry, and `transactions.external_ref` stops a message being imported twice (`supabase/migrations/0002_auto_import.sql`).
 
-## Join the community
+## Checks
 
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```
+npx tsc --noEmit
+npx expo lint
+npx expo-doctor
+```
