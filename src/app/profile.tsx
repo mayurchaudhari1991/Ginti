@@ -1,8 +1,9 @@
 import { router } from 'expo-router';
-import { useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
+import { notify } from '@/components/dialog';
 import { Icon, type IconName } from '@/components/icon';
 import { Float, Rise, Spin } from '@/components/motion';
 import { Txt } from '@/components/txt';
@@ -29,7 +30,20 @@ function logStreak(dates: string[]) {
 }
 
 export default function Profile() {
-  const { session, signOut } = useAuth();
+  const { session, signOut, updateName } = useAuth();
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState('');
+
+  async function saveName() {
+    const next = draftName.trim();
+    if (!next) return setEditingName(false);
+    try {
+      await updateName(next);
+      setEditingName(false);
+    } catch (e) {
+      notify('Could not save name', e instanceof Error ? e.message : String(e));
+    }
+  }
   const { txns, accounts, categories, recurring } = useLedger();
   const { monthlyBudget } = usePrefs();
   const name = firstName(session) ?? 'You';
@@ -48,8 +62,9 @@ export default function Profile() {
   const progress = (stats.entries % 50) / 50;
   const ringC = 2 * Math.PI * 58;
 
-  const menu: { icon: IconName; label: string; value?: string; to: '/settings' | '/accounts' | '/budgets' | '/insights' | '/recurring' | '/history' | '/wrapped' | '/import' }[] = [
+  const menu: { icon: IconName; label: string; value?: string; to: '/settings' | '/accounts' | '/budgets' | '/insights' | '/recurring' | '/history' | '/wrapped' | '/import' | '/categories' }[] = [
     { icon: 'sparkle', label: `${new Date().getFullYear()} year in review`, to: '/wrapped' },
+    { icon: 'dot', label: 'Categories', value: String(categories.length), to: '/categories' },
     { icon: 'target', label: 'Budgets by category', value: String(categories.filter((c) => c.monthly_budget).length), to: '/budgets' },
     { icon: 'repeat', label: 'Bills and subscriptions', value: String(recurring.length), to: '/recurring' },
     { icon: 'calendar', label: 'Spend calendar', to: '/history' },
@@ -81,9 +96,35 @@ export default function Profile() {
             <Txt style={{ fontFamily: F.display, fontSize: 36, color: C.ionText }}>{name[0]}</Txt>
           </View>
         </View>
-        <Txt variant="display" style={{ fontSize: 22 }}>
-          {name}
-        </Txt>
+        {editingName ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TextInput
+              value={draftName}
+              onChangeText={setDraftName}
+              autoFocus
+              maxLength={30}
+              returnKeyType="done"
+              onSubmitEditing={saveName}
+              style={styles.nameInput}
+              accessibilityLabel="Your name"
+            />
+            <IconButton icon="check" label="Save name" color={C.ink} style={{ backgroundColor: C.volt, borderColor: C.volt }} onPress={saveName} />
+          </View>
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Edit your name"
+            onPress={() => {
+              setDraftName(String(session?.user.user_metadata?.display_name ?? name));
+              setEditingName(true);
+            }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Txt variant="display" style={{ fontSize: 22 }}>
+              {name}
+            </Txt>
+            <Icon name="settings" size={16} color={C.muted} />
+          </Pressable>
+        )}
         <Txt variant="label">
           LEVEL {level} · {Math.round(progress * 100)}% TO LEVEL {level + 1}
         </Txt>
@@ -156,6 +197,7 @@ function Badge({ earned, top, label, bg, line, color, delay }: { earned: boolean
 }
 
 const styles = StyleSheet.create({
+  nameInput: { minWidth: 180, height: 46, borderRadius: 12, backgroundColor: C.surface, borderWidth: 1.5, borderColor: C.volt, color: C.text, fontFamily: F.display, fontSize: 18, paddingHorizontal: 14 },
   avatar: { width: 96, height: 96, borderRadius: 48, backgroundColor: '#1A1640', alignItems: 'center', justifyContent: 'center' },
   stat: { flex: 1, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 18, padding: 12 },
   badge: { flex: 1, height: 76, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },

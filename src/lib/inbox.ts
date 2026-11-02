@@ -74,12 +74,13 @@ export function openNotificationAccess() {
  * Reads new bank SMS and captured payment notifications, and queues any payments not already in the
  * ledger for review. Returns how many new items were queued.
  */
-export async function scanInbox(accounts: Account[], categories: Category[], txns: Txn[]) {
+export async function scanInbox(accounts: Account[], categories: Category[], txns: Txn[], opts: { lookbackDays?: number } = {}) {
   if (!GintiInbox) return 0;
   const now = Date.now();
-  const since = Number(store?.getItem(LAST_SCAN) ?? now - FIRST_SCAN_DAYS * 86400000);
+  const canReadSms = GintiInbox.hasSmsPermission();
+  const since = opts.lookbackDays ? now - opts.lookbackDays * 86400000 : Number(store?.getItem(LAST_SCAN) ?? now - FIRST_SCAN_DAYS * 86400000);
   const [sms, notes] = await Promise.all([
-    GintiInbox.hasSmsPermission() ? GintiInbox.readSms(since, 500) : Promise.resolve([]),
+    canReadSms ? GintiInbox.readSms(since, 1000) : Promise.resolve([]),
     Promise.resolve(GintiInbox.drainNotifications()),
   ]);
   const parsed = [
@@ -87,7 +88,7 @@ export async function scanInbox(accounts: Account[], categories: Category[], txn
     ...notes.map((m) => parseMessage(m, 'notification', accounts, categories)),
   ].filter((d): d is Detected => d != null);
 
-  const known = new Set(pending.map((p) => p.ref));
+  const known = new Set([...pending.map((p) => p.ref), ...txns.map((t) => t.external_ref).filter(Boolean)]);
   // A manual entry with the same amount within half an hour is probably this payment.
   const looksLogged = (d: Detected) =>
     txns.some((t) => t.amount === d.amount && Math.abs(new Date(t.occurred_at).getTime() - d.time) < 30 * 60 * 1000);
@@ -95,7 +96,9 @@ export async function scanInbox(accounts: Account[], categories: Category[], txn
     .filter((d) => !known.has(d.ref))
     .map((d) => (looksLogged(d) ? { ...d, maybeDuplicate: true } : d));
 
-  store?.setItem(LAST_SCAN, String(now));
+  // Only move the marker once SMS were actually readable; otherwise a scan before permission was
+  // granted would hide all the earlier bank texts from every later scan.
+  if (canReadSms) store?.setItem(LAST_SCAN, String(now));
   if (fresh.length) setPending(dedupe([...fresh, ...pending]));
   return fresh.length;
 }

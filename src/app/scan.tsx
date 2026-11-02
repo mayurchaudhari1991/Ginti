@@ -4,16 +4,18 @@ import { Image } from 'expo-image';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import Animated, { css } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { notify } from '@/components/dialog';
 import { Icon } from '@/components/icon';
 import { Pulse } from '@/components/motion';
 import { Txt } from '@/components/txt';
 import { Button, Chip, IconButton } from '@/components/ui';
 import { useLedger } from '@/lib/ledger';
 import { readReceipt } from '@/lib/ollama';
+import { usePrefs } from '@/lib/prefs';
 import { C, F } from '@/theme/tokens';
 
 const scanLine = css.keyframes({
@@ -26,6 +28,7 @@ type Stage = 'camera' | 'reading' | 'review';
 
 export default function Scan() {
   const { categories, accounts, addTxn } = useLedger();
+  const { aiEnabled } = usePrefs();
   const [permission, requestPermission] = useCameraPermissions();
   const camera = useRef<CameraView>(null);
   const [ready, setReady] = useState(false);
@@ -48,6 +51,10 @@ export default function Scan() {
     const shot = await camera.current.takePictureAsync({ quality: 0.8 });
     if (!shot) return;
     setPhoto(shot.uri);
+    if (!aiEnabled) {
+      setStage('review');
+      return;
+    }
     setStage('reading');
     try {
       // Vision models read a 1024 px receipt as well as a 4000 px one, and it uploads much faster.
@@ -85,7 +92,7 @@ export default function Scan() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       router.back();
     } catch (e) {
-      Alert.alert('Could not save', e instanceof Error ? e.message : String(e));
+      notify('Could not save', e instanceof Error ? e.message : String(e));
       setSaving(false);
     }
   }
@@ -174,6 +181,9 @@ export default function Scan() {
         <View style={styles.sheet}>
           <View style={styles.grab} />
           <ScrollView contentContainerStyle={{ gap: 14, paddingBottom: 8 }} keyboardShouldPersistTaps="handled">
+            {!aiEnabled && (
+              <Txt style={{ color: C.ionText, fontSize: 13, lineHeight: 18 }}>Ginti AI is off, so fill in the details yourself. Turn it on in Settings to read receipts automatically.</Txt>
+            )}
             {aiFailed && (
               <Txt style={{ color: C.warn, fontSize: 13, lineHeight: 18 }}>
                 Ginti AI could not read this one (it needs your PC on the same Wi-Fi). Fill in the details below.

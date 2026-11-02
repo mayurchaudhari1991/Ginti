@@ -56,6 +56,18 @@ const cases: [string, Parameters<typeof sms>, Partial<ReturnType<typeof sms> & o
   ['Credit card bill statement is ignored', ['Statement for HDFC Bank Credit Card x4821: Total due Rs 12,400.00, minimum amount Rs 620.00 due by 14-11-26.']],
   ['Personal number is ignored', ['Bhai Rs 500 sent to you, check', '+919876543210']],
   ['Collect request is ignored', ['Rs 300 collect request from 9876543210@ybl. Approve in your UPI app.']],
+  [
+    'Union Bank "Rs:" amount and Fvg payee',
+    ['Union Bank of India A/c *4821 Debited Rs:49.00 on 01-11-2026 10:12:03 by Mob Bk ref no 630512345678, Fvg: GOOGLE PLAY', 'JK-UNIONB-T'],
+    { kind: 'expense', amount: 49, merchant: 'Google Play' },
+  ],
+  ['Airtel recharge confirmation is an expense', ['Recharge of INR 349.00 is successful for your Airtel Mobile on 01-11-2026 10:00, Transaction ID 123456789.', 'AZ-AIRTEL-S'], { kind: 'expense', amount: 349, merchant: 'Airtel Mobile' }],
+  ['Biller receipt is an expense', ['This is a confirmation for receipt of Rs.1179 towards ACT Fibernet A/c No 123456789012.', 'AD-ACTFBN-S'], { kind: 'expense', amount: 1179, merchant: 'Act Fibernet' }],
+  ['Jio bill "payment received" is an expense', ['Dear Customer, Payment of Rs. 706.82 for your JioHome connection has been received. Thank you.', 'JA-JIOFBR-S'], { kind: 'expense', amount: 706.82 }],
+  ['Mutual fund folio notice is ignored', ['Dear Investor, Purchase transaction in Folio No. 12345678 in Scheme : SBI Energy Opportunities for amount of INR 1499.93 is processed.', 'JM-SBIMFD-S']],
+  ['Failed recharge is ignored', ['Hi, unfortunately, your payment of Rs. 99 with Transaction ID: 123 for your PREPAID number failed.', 'AD-AIRINF-S']],
+  ['Jupiter payee is not "INR"', ['Hey Mayur, your Jupiter Account (Pots) is debited for INR 5000.00 on 2026-11-01 10:00:00', 'AD-ONJPTR-S'], { kind: 'expense', amount: 5000, merchant: '' }],
+  ['BOI credit payee is not "Upi"', ['BOI - Rs.260.00 Credited to your Ac XX4821 on 01-11-26 by UPI ref No.630512345678.Avl Bal 5000', 'VM-BOIIND-S'], { kind: 'income', amount: 260, merchant: '' }],
 ].map(([label, args, expected]) => [label as string, args as Parameters<typeof sms>, (expected ?? null) as never]);
 
 let failed = 0;

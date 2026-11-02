@@ -18,14 +18,20 @@ export type Detected = {
   maybeDuplicate?: boolean;
 };
 
-const AMOUNT = /(?:rs\.?|inr|₹)\s?([\d,]+(?:\.\d{1,2})?)/i;
+// "Rs.450", "Rs 450", "Rs:450" (Union Bank), "INR 450", "₹450".
+const AMOUNT = /(?:rs\.?|inr|₹)\s?:?\s?([\d,]+(?:\.\d{1,2})?)/i;
 // SBI and some others write "debited by 1284.0" with no currency marker; trusted only from bank senders.
 const VERB_AMOUNT = /\b(?:debited|credited|withdrawn|spent|paid|sent)\s+(?:by|for|of|with)?\s*([\d,]+(?:\.\d{1,2})?)\b/i;
 const DEBIT = /\b(debited|spent|paid|sent|withdrawn|purchase|transferred to|txn of)\b/i;
 const CREDIT = /\b(credited|received|deposited|refund(?:ed)?)\b/i;
 // Bills, reminders, OTPs and offers mention amounts but are not money that moved.
-const SKIP = /\b(otp|one time password|verification code|will be (?:debited|credited)|is due|due on|due date|requested|request of|collect request|reminder|offer|cashback of upto|win |apply now|pre-approved|loan of|bill (?:generated|of)|statement|failed|declined|unsuccessful|reversed|minimum amount)\b/i;
+// Fund-house notices (folio, NAV, units) repeat a debit the bank already reported.
+const SKIP = /\b(otp|one time password|verification code|will be (?:debited|credited)|is due|due on|due date|requested|request of|collect request|reminder|offer|cashback of upto|win |apply now|pre-approved|loan of|bill (?:generated|of)|statement|failed|declined|unsuccessful|unfortunately|insufficient|reversed|minimum amount|lien|mandate|folio|investor|units allotted|nav of)\b/i;
 const ATM = /\b(atm|cash withdrawal|withdrawn at)\b/i;
+// A biller confirming it was paid ("Recharge of INR 199 is successful", "receipt of Rs.999 towards ACT"): money went out.
+const BILLER_PAID = /\b(recharge of .{0,40}\b(?:successful|done)|payment of .{0,60}\b(?:received|successful)|receipt of (?:rs|inr|₹))/i;
+// Words that look like a payee but are just the rail or a reference.
+const NOT_A_PAYEE = /^(upi|neft|imps|rtgs|mob bk|net ?banking|ref.*|inr.*|rs.*|₹.*|\d.*|your|a\/c|ac|account|card|x+\d*|(?:receipt|payment|recharge|purchase|txn|transaction|amount)\b.*)$/i;
 
 const BANKS: [RegExp, string][] = [
   [/hdfc/i, 'hdfc'],
@@ -40,6 +46,11 @@ const BANKS: [RegExp, string][] = [
   [/indus/i, 'indusind'],
   [/canara|canbnk/i, 'canara'],
   [/union bank|unionb/i, 'union'],
+  [/bank of india|boiind|\bboi\b/i, 'boi'],
+  [/federal|fedbnk/i, 'federal'],
+  [/jupiter|onjptr/i, 'jupiter'],
+  [/idbi/i, 'idbi'],
+  [/\bau ?bank|aubank/i, 'au'],
 ];
 
 const APP_NAMES: Record<string, string> = {
@@ -63,20 +74,23 @@ function titleCase(s: string) {
 function merchantOf(body: string, kind: TxnKind) {
   const upi = body.match(/upi\/(?:p2[am]\/)?\d*\/?([a-z][a-z0-9 .&'-]{2,30})/i);
   if (upi) return titleCase(upi[1]);
+  const stop = '(?=\\s+(?:on|ref|refno|upi|via|using|from|to|avl|info|bal|txn|imps|neft|a\\/c|with)\\b|[.,(;]|$)';
   const patterns =
     kind === 'income'
-      ? [/(?:from|by)\s+(?:vpa\s+)?([a-z0-9@._&' -]{2,40}?)(?=\s+(?:on|ref|refno|upi|via|to|avl|info|txn|imps|neft)\b|[.,(]|$)/i]
+      ? [new RegExp(`\\b(?:from|by)\\s+(?:vpa\\s+)?([a-z0-9@._&' -]{2,40}?)${stop}`, 'gi')]
       : [
-          /(?:to|at|towards|for)\s+(?:vpa\s+)?([a-z0-9@._&' -]{2,40}?)(?=\s+(?:on|ref|refno|upi|via|using|from|avl|info|bal|txn|imps|neft)\b|[.,(]|$)/i,
-          /info:?\s*([a-z0-9@._ -]{2,40})/i,
+          /\bfvg:?\s*([a-z0-9 .&'-]{2,30}?)(?=\s*$|[.,;])/gi, // Union Bank: "Fvg: GOOGLE"
+          new RegExp(`\\b(?:to|at|towards|for)\\s+(?:vpa\\s+)?([a-z0-9@._&' -]{2,40}?)${stop}`, 'gi'),
+          /\binfo:?\s*([a-z0-9@._ -]{2,40})/gi,
         ];
+  // Every candidate is tried in order: "confirmation for receipt of Rs.999 towards ACT" skips "receipt of Rs".
   for (const p of patterns) {
-    const m = body.match(p);
-    if (!m) continue;
-    let name = m[1].trim();
-    if (name.includes('@')) name = name.split('@')[0].replace(/[._-]?\d+$/, '').replace(/[._-]/g, ' ');
-    if (/^(your|a\/c|ac|account|card|x+\d*|\d+)$/i.test(name)) continue;
-    return titleCase(name);
+    for (const m of body.matchAll(p)) {
+      let name = m[1].trim().replace(/^(your|the|a)\s+/i, '');
+      if (name.includes('@')) name = name.split('@')[0].replace(/[._-]?\d+$/, '').replace(/[._-]/g, ' ');
+      if (NOT_A_PAYEE.test(name.trim())) continue;
+      return titleCase(name);
+    }
   }
   return '';
 }
@@ -110,16 +124,23 @@ export function parseMessage(msg: InboxMessage, source: Detected['source'], acco
   const verbs = body.replace(/credit card/gi, 'card');
   const d = verbIndex(verbs, DEBIT);
   const c = verbIndex(verbs, CREDIT);
-  if (d === Infinity && c === Infinity) return null;
+  const billerPaid = BILLER_PAID.test(body);
+  if (d === Infinity && c === Infinity && !billerPaid) return null;
   const isAtm = ATM.test(body);
-  let kind: TxnKind = isAtm ? 'transfer' : d <= c ? 'expense' : 'income';
+  let kind: TxnKind = isAtm ? 'transfer' : billerPaid || d <= c ? 'expense' : 'income';
+  // Only banks tell you money came in; a shop or biller saying "received" means it received yours.
+  if (kind === 'income' && source === 'sms' && !fromBank) kind = 'expense';
 
   const last4 = last4Of(body);
-  const bank = BANKS.find(([re]) => re.test(msg.address) || re.test(body))?.[1];
+  const bankRe = BANKS.find(([re]) => re.test(msg.address) || re.test(body))?.[0];
   const live = accounts.filter((a) => !a.archived);
+  const banks = live.filter((a) => a.kind !== 'cash');
   const account =
     (last4 && live.find((a) => a.last4 === last4)) ||
-    (bank && live.find((a) => a.kind !== 'cash' && a.name.toLowerCase().includes(bank))) ||
+    // The same pattern that recognised the sender recognises the account name ("BOIIND" ↔ "Bank of India").
+    (bankRe && banks.find((a) => bankRe.test(a.name))) ||
+    // One bank account: an SMS from a bank or payment app can only be about that one.
+    (source === 'sms' && banks.length === 1 ? banks[0] : null) ||
     null;
   const cash = live.find((a) => a.kind === 'cash') ?? null;
   if (kind === 'transfer' && !cash) kind = 'expense';

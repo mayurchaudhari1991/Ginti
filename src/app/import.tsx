@@ -1,8 +1,9 @@
 import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, AppState, Pressable, StyleSheet, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, View } from 'react-native';
 
+import { choose, confirm, notify } from '@/components/dialog';
 import { Icon } from '@/components/icon';
 import { Pulse, Rise } from '@/components/motion';
 import { Txt } from '@/components/txt';
@@ -40,14 +41,20 @@ export default function ImportScreen() {
     }, []),
   );
 
-  async function scan() {
+  async function scan(lookbackDays?: number) {
     setScanning(true);
     try {
-      const n = await scanInbox(accounts, categories, txns);
+      const n = await scanInbox(accounts, categories, txns, { lookbackDays });
       Haptics.notificationAsync(n ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(() => {});
-      if (!n) Alert.alert('All caught up', 'No new payments found in your SMS or payment notifications.');
+      if (!n)
+        notify(
+          'All caught up',
+          lookbackDays
+            ? `No payments in the last ${lookbackDays} days that are not already in your ledger or waiting below.`
+            : 'No new payments since the last scan. Use "Look back 60 days" to check older texts.',
+        );
     } catch (e) {
-      Alert.alert('Scan failed', e instanceof Error ? e.message : String(e));
+      notify('Scan failed', e instanceof Error ? e.message : String(e));
     } finally {
       setScanning(false);
     }
@@ -73,9 +80,9 @@ export default function ImportScreen() {
       );
       removePending(selected.map((d) => d.ref));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      Alert.alert('Added', `${added} ${added === 1 ? 'entry' : 'entries'} added to your ledger.`);
+      notify('Added', `${added} ${added === 1 ? 'entry' : 'entries'} added to your ledger.`);
     } catch (e) {
-      Alert.alert('Could not import', e instanceof Error ? e.message : String(e));
+      notify('Could not import', e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -116,8 +123,11 @@ export default function ImportScreen() {
               body="Reads transaction texts from your bank. Covers UPI, cards, ATM and credits."
               granted={perms.sms}
               onPress={async () => {
-                await requestSmsPermission();
-                setPerms(inboxPermissions());
+                if (await requestSmsPermission()) {
+                  setPerms(inboxPermissions());
+                  // First access: pull in the last two months so the user sees results straight away.
+                  scan(60);
+                }
               }}
             />
             <View style={{ height: 1, backgroundColor: '#1A1D27' }} />
@@ -133,23 +143,28 @@ export default function ImportScreen() {
             </Txt>
           </Card>
 
-          <Button title={scanning ? 'Scanning…' : 'Scan for new payments'} icon="scan" onPress={scan} busy={scanning} disabled={!perms.sms && !perms.notifications} />
+          <Button title={scanning ? 'Scanning…' : 'Scan for new payments'} icon="scan" onPress={() => scan()} busy={scanning} disabled={!perms.sms && !perms.notifications} />
+          <Button title="Look back 60 days" variant="ghost" icon="calendar" onPress={() => scan(60)} disabled={scanning || !perms.sms} />
         </>
       )}
 
       {pending.length > 0 ? (
         <View style={{ gap: 10 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <Txt variant="title" style={{ fontSize: 15 }}>
+            <Txt variant="title" style={{ fontSize: 15, flex: 1 }}>
               Found {pending.length}
             </Txt>
             <Pressable
-              onPress={() =>
-                Alert.alert('Dismiss all?', 'They will not be added to your ledger.', [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Dismiss', style: 'destructive', onPress: () => removePending(pending.map((p) => p.ref)) },
-                ])
-              }
+              hitSlop={10}
+              style={{ marginRight: 16 }}
+              onPress={() => setUnchecked(unchecked.size ? new Set() : new Set(pending.map((p) => p.ref)))}>
+              <Txt style={{ fontSize: 13, color: C.volt }}>{unchecked.size ? 'Select all' : 'Select none'}</Txt>
+            </Pressable>
+            <Pressable
+              onPress={async () => {
+                if (await confirm({ title: 'Dismiss all?', message: 'They will not be added to your ledger.', confirm: 'Dismiss', destructive: true }))
+                  removePending(pending.map((p) => p.ref));
+              }}
               hitSlop={10}>
               <Txt style={{ fontSize: 13, color: C.muted }}>Dismiss all</Txt>
             </Pressable>
@@ -201,7 +216,20 @@ function DetectedRow({ item, checked, onToggle }: { item: Detected; checked: boo
   const live = accounts.filter((a) => !a.archived && a.kind !== 'cash');
 
   return (
-    <Pressable onPress={onToggle} style={[styles.row, !checked && { opacity: 0.55 }]}>
+    <Pressable
+      onPress={onToggle}
+      accessibilityHint="Long-press to change the category"
+      onLongPress={async () => {
+        if (item.kind === 'transfer') return;
+        tap();
+        const kind = item.kind === 'income' ? 'income' : 'expense';
+        const categoryId = await choose('Category', item.merchant || undefined, [
+          ...categories.filter((c) => c.kind === kind).map((c) => ({ label: c.name, value: c.id as string | null, tone: (c.id === item.categoryId ? 'primary' : 'plain') as 'primary' | 'plain' })),
+          { label: 'Cancel', value: null, tone: 'cancel' as const },
+        ]);
+        if (categoryId) updatePending(item.ref, { categoryId });
+      }}
+      style={[styles.row, !checked && { opacity: 0.55 }]}>
       <View style={[styles.check, checked && { backgroundColor: C.volt, borderColor: C.volt }]}>{checked && <Icon name="check" size={14} color={C.ink} strokeWidth={2.6} />}</View>
       <CategoryBadge color={color} icon={item.kind === 'transfer' ? 'cash' : (cat?.icon ?? 'dot')} size={36} />
       <View style={{ flex: 1 }}>
@@ -217,12 +245,13 @@ function DetectedRow({ item, checked, onToggle }: { item: Detected; checked: boo
           </Txt>
         ) : (
           <Pressable
-            onPress={() =>
-              Alert.alert('Which account?', item.raw.slice(0, 160), [
-                ...live.slice(0, 4).map((a) => ({ text: a.name, onPress: () => updatePending(item.ref, { accountId: a.id }) })),
-                { text: 'Cancel', style: 'cancel' as const },
-              ])
-            }>
+            onPress={async () => {
+              const accountId = await choose('Which account?', item.raw.slice(0, 160), [
+                ...live.map((a) => ({ label: a.name, value: a.id as string | null, icon: 'bank' as const, tone: 'plain' as const })),
+                { label: 'Cancel', value: null, tone: 'cancel' as const },
+              ]);
+              if (accountId) updatePending(item.ref, { accountId });
+            }}>
             <Txt style={{ marginTop: 2, fontSize: 12, color: C.warn }}>Pick account ›</Txt>
           </Pressable>
         )}

@@ -1,10 +1,11 @@
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { confirm, notify } from '@/components/dialog';
 import { Icon } from '@/components/icon';
 import { KF, Pulse, Rise } from '@/components/motion';
 import { Txt } from '@/components/txt';
@@ -12,23 +13,30 @@ import { Button, CategoryBadge, IconButton, Segmented, tap } from '@/components/
 import { inr } from '@/lib/format';
 import { useLedger } from '@/lib/ledger';
 import { parseLocally, parseWithModel, type ParsedEntry } from '@/lib/ollama';
+import { usePrefs } from '@/lib/prefs';
 import type { TxnKind } from '@/lib/types';
 import { C, F } from '@/theme/tokens';
 
 export default function AddEntry() {
-  const { categories, accounts, addTxn } = useLedger();
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { categories, accounts, txns, addTxn, updateTxn, deleteTxn } = useLedger();
   const liveAccounts = accounts.filter((a) => !a.archived);
+  const { aiEnabled: aiOn } = usePrefs();
+  // Opened with an id, this screen edits that entry instead of adding a new one.
+  const editing = id ? txns.find((t) => t.id === id) : undefined;
 
-  const [kind, setKind] = useState<TxnKind>('expense');
+  const [kind, setKind] = useState<TxnKind>(editing?.kind ?? 'expense');
   const [sentence, setSentence] = useState('');
   const [parsing, setParsing] = useState(false);
   const [parsed, setParsed] = useState<ParsedEntry | null>(null);
-  const [amount, setAmount] = useState('');
-  const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [accountId, setAccountId] = useState<string | null>(liveAccounts.find((a) => a.kind === 'cash')?.id ?? liveAccounts[0]?.id ?? null);
-  const [toAccountId, setToAccountId] = useState<string | null>(null);
-  const [note, setNote] = useState('');
+  const [amount, setAmount] = useState(editing ? String(editing.amount) : '');
+  const [categoryId, setCategoryId] = useState<string | null>(editing?.category_id ?? null);
+  const [accountId, setAccountId] = useState<string | null>(editing?.account_id ?? liveAccounts.find((a) => a.kind === 'cash')?.id ?? liveAccounts[0]?.id ?? null);
+  const [toAccountId, setToAccountId] = useState<string | null>(editing?.to_account_id ?? null);
+  const [note, setNote] = useState(editing?.note ?? '');
   const [daysAgo, setDaysAgo] = useState(0);
+  // An edited entry keeps its original date unless Today or Yesterday is tapped.
+  const [keptDate, setKeptDate] = useState<string | null>(editing?.occurred_at ?? null);
   const [saving, setSaving] = useState(false);
   const parseSeq = useRef(0);
 
@@ -52,6 +60,7 @@ export default function AddEntry() {
     const t = setTimeout(async () => {
       // Fill the form instantly from the on-phone parser, then refine when the model answers (~15 s).
       apply(parseLocally(text, categories, liveAccounts));
+      if (!aiOn) return;
       setParsing(true);
       try {
         const result = await parseWithModel(text, categories, liveAccounts);
@@ -78,22 +87,30 @@ export default function AddEntry() {
     try {
       const when = new Date();
       when.setDate(when.getDate() - daysAgo);
-      await addTxn({
+      const fields = {
         kind,
         amount: value,
         account_id: accountId,
         to_account_id: kind === 'transfer' ? toAccountId : null,
         category_id: kind === 'transfer' ? null : categoryId,
         note: note.trim() || null,
-        occurred_at: when.toISOString(),
-        source: parsed?.by === 'ai' ? 'ai' : 'manual',
-      });
+        occurred_at: keptDate ?? when.toISOString(),
+      };
+      if (editing) await updateTxn(editing.id, fields);
+      else await addTxn({ ...fields, source: parsed?.by === 'ai' ? 'ai' : 'manual' });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       router.back();
     } catch (e) {
-      Alert.alert('Could not save', e instanceof Error ? e.message : String(e));
+      notify('Could not save', e instanceof Error ? e.message : String(e));
       setSaving(false);
     }
+  }
+
+  async function remove() {
+    if (!editing) return;
+    if (!(await confirm({ title: 'Delete entry?', message: `${editing.note ?? 'This entry'} · ${inr(editing.amount)}`, confirm: 'Delete', destructive: true }))) return;
+    await deleteTxn(editing.id).catch((e) => notify('Could not delete', e instanceof Error ? e.message : String(e)));
+    router.back();
   }
 
   const chosenCat = categories.find((c) => c.id === categoryId);
@@ -113,11 +130,20 @@ export default function AddEntry() {
               { value: 'transfer', label: 'Transfer' },
             ]}
           />
-          <IconButton icon="scan" label="Scan receipt" onPress={() => router.replace('/scan')} />
+          {editing ? (
+            <IconButton icon="trash" label="Delete entry" color={C.danger} onPress={remove} />
+          ) : (
+            <IconButton icon="scan" label="Scan receipt" onPress={() => router.replace('/scan')} />
+          )}
         </View>
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {kind !== 'transfer' && (
+          {editing && (
+            <Txt variant="label" style={{ textAlign: 'center' }}>
+              EDITING · {new Date(editing.occurred_at).toDateString().toUpperCase()}
+            </Txt>
+          )}
+          {kind !== 'transfer' && !editing && (
             <Rise>
               <View style={styles.aiBox}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -125,7 +151,7 @@ export default function AddEntry() {
                     <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: C.ion }} />
                   </Pulse>
                   <Txt variant="label" color={C.ionText}>
-                    {parsing ? 'GINTI AI IS READING…' : "TYPE IT THE WAY YOU'D SAY IT"}
+                    {parsing ? 'GINTI AI IS READING…' : aiOn ? "TYPE IT THE WAY YOU'D SAY IT" : 'TYPE IT · AI OFF, READ ON PHONE'}
                   </Txt>
                 </View>
                 <TextInput
@@ -210,6 +236,14 @@ export default function AddEntry() {
                       </Pressable>
                     );
                   })}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="New category"
+                    onPress={() => router.push({ pathname: '/categories', params: { create: kind === 'income' ? 'income' : 'expense' } })}
+                    style={[styles.catCell, { borderStyle: 'dashed', borderColor: C.line2 }]}>
+                    <Icon name="plus" size={20} color={C.volt} />
+                    <Txt style={{ fontSize: 12, color: C.text2 }}>New</Txt>
+                  </Pressable>
                 </View>
               </View>
               <AccountPicker title={kind === 'income' ? 'Received in' : 'Paid from'} value={accountId} onChange={setAccountId} />
@@ -223,10 +257,11 @@ export default function AddEntry() {
                 onPress={() => {
                   tap();
                   setDaysAgo(i);
+                  setKeptDate(null);
                 }}
-                style={[styles.dayChip, daysAgo === i && styles.dayChipOn]}>
-                <Icon name="calendar" size={14} color={daysAgo === i ? C.ink : C.text2} />
-                <Txt style={{ fontSize: 13, color: daysAgo === i ? C.ink : C.text2, fontFamily: daysAgo === i ? F.semibold : F.body }}>{label}</Txt>
+                style={[styles.dayChip, !keptDate && daysAgo === i && styles.dayChipOn]}>
+                <Icon name="calendar" size={14} color={!keptDate && daysAgo === i ? C.ink : C.text2} />
+                <Txt style={{ fontSize: 13, color: !keptDate && daysAgo === i ? C.ink : C.text2, fontFamily: !keptDate && daysAgo === i ? F.semibold : F.body }}>{label}</Txt>
               </Pressable>
             ))}
             <TextInput
@@ -241,7 +276,13 @@ export default function AddEntry() {
         </ScrollView>
 
         <View style={styles.footer}>
-          <Button title={kind === 'income' ? 'Save income' : kind === 'transfer' ? 'Save transfer' : 'Save expense'} icon="check" onPress={save} busy={saving} disabled={!canSave} />
+          <Button
+            title={editing ? 'Save changes' : kind === 'income' ? 'Save income' : kind === 'transfer' ? 'Save transfer' : 'Save expense'}
+            icon="check"
+            onPress={save}
+            busy={saving}
+            disabled={!canSave}
+          />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

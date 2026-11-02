@@ -33,10 +33,12 @@ export type Txn = {
   note: string | null;
   occurred_at: string;
   source: TxnSource;
+  external_ref?: string | null;
 };
 
 export type NewTxn = Omit<Txn, 'id' | 'source'> & { source?: TxnSource; external_ref?: string };
 export type NewAccount = Pick<Account, 'name' | 'kind' | 'last4' | 'color' | 'opening_balance'>;
+export type NewCategory = Pick<Category, 'name' | 'color' | 'icon' | 'kind'> & { monthly_budget?: number | null };
 
 export type Recurring = {
   id: string;

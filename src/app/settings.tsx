@@ -59,7 +59,18 @@ export default function Settings() {
       </Group>
 
       <Group title="GINTI AI" tone="ai">
-        <View style={{ padding: 14, gap: 10 }}>
+        <View style={[styles.row, { borderBottomWidth: 1, borderBottomColor: '#241F55' }]}>
+          <View style={{ flex: 1 }}>
+            <Txt style={{ fontSize: 14 }}>Use Ginti AI</Txt>
+            <Txt variant="small" style={{ fontSize: 11, color: '#A9A2E8', marginTop: 2 }}>
+              {prefs.aiEnabled
+                ? 'Reads typed expenses and receipts, and answers questions, using the model on your PC'
+                : 'Off: entries are read on the phone, and chat and receipt reading are paused'}
+            </Txt>
+          </View>
+          <Switch value={prefs.aiEnabled} onValueChange={(v) => setPrefs({ aiEnabled: v })} trackColor={{ true: C.ion, false: C.line2 }} thumbColor={C.text} />
+        </View>
+        <View style={{ padding: 14, gap: 10, opacity: prefs.aiEnabled ? 1 : 0.4 }} pointerEvents={prefs.aiEnabled ? 'auto' : 'none'}>
           <Txt style={{ fontSize: 13, color: C.ionText }}>Ollama address on your PC</Txt>
           <TextInput value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={styles.input} />
           <Txt style={{ fontSize: 13, color: C.ionText }}>Model</Txt>
@@ -96,6 +107,9 @@ export default function Settings() {
       <Group title="ACCOUNT">
         <Row label={session?.user.email ?? 'Signed out'}>
           <Icon name="sync" size={18} color={C.volt} />
+        </Row>
+        <Row label="Categories" onPress={() => router.push('/categories')}>
+          <Icon name="chevron-right" size={18} color={C.muted} />
         </Row>
         <Row label="Auto-import from SMS and payment apps" onPress={() => router.push('/import')}>
           <Icon name="chevron-right" size={18} color={C.muted} />

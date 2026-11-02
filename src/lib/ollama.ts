@@ -24,7 +24,8 @@ async function post<T>(path: string, body: unknown, timeoutMs: number): Promise<
 
 /** Round-trip time in ms when the server answers and has the model, otherwise an explanation. */
 export async function ping(): Promise<{ ok: true; ms: number } | { ok: false; reason: string }> {
-  const { ollamaUrl, ollamaModel } = getPrefs();
+  const { ollamaUrl, ollamaModel, aiEnabled: on } = getPrefs();
+  if (!on) return { ok: false, reason: 'Ginti AI is turned off' };
   const started = Date.now();
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 4000);
@@ -40,8 +41,18 @@ export async function ping(): Promise<{ ok: true; ms: number } | { ok: false; re
   }
 }
 
+/** Thrown instead of calling the model when the user has switched Ginti AI off. */
+export class AiOffError extends Error {
+  constructor() {
+    super('Ginti AI is turned off in Settings');
+  }
+}
+
+export const aiEnabled = () => getPrefs().aiEnabled;
+
 export async function chat(messages: ChatMessage[], opts: { format?: object; timeoutMs?: number } = {}) {
-  const { ollamaModel } = getPrefs();
+  const { ollamaModel, aiEnabled: on } = getPrefs();
+  if (!on) throw new AiOffError();
   const data = await post<{ message: { content: string } }>(
     '/api/chat',
     // No `think` flag: on Ollama 0.20 sending think:false makes Gemma 4 emit stray tool calls instead of an answer.

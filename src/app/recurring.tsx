@@ -1,9 +1,10 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import Animated, { css } from 'react-native-reanimated';
 
+import { choose, confirm, notify } from '@/components/dialog';
 import { Icon } from '@/components/icon';
 import { Float, Pulse, Rise } from '@/components/motion';
 import { Txt } from '@/components/txt';
@@ -18,7 +19,8 @@ const ping = css.keyframes({ from: { opacity: 0.8, transform: [{ scale: 1 }] }, 
 
 export default function Bills() {
   const { recurring, txns, accounts, categories, addRecurring, deleteRecurring, importTxns } = useLedger();
-  const [adding, setAdding] = useState(false);
+  // 'new' opens an empty bill form; a Recurring opens it pre-filled for editing.
+  const [form, setForm] = useState<Recurring | 'new' | null>(null);
   const now = new Date();
   const y = now.getFullYear();
   const m = now.getMonth();
@@ -33,7 +35,7 @@ export default function Bills() {
 
   async function markPaid(r: Recurring) {
     const account = r.account_id ?? accounts.find((a) => a.kind === 'cash')?.id;
-    if (!account) return Alert.alert('Pick an account', 'Add an account first so Ginti knows where this was paid from.');
+    if (!account) return notify('Pick an account', 'Add an account first so Ginti knows where this was paid from.');
     await importTxns([
       {
         kind: 'expense',
@@ -50,13 +52,18 @@ export default function Bills() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }
 
-  function actions(r: Recurring, paid: boolean) {
+  async function actions(r: Recurring, paid: boolean) {
     tap();
-    Alert.alert(r.name, `${inr(r.amount)} every month on day ${r.day_of_month}`, [
-      ...(paid ? [] : [{ text: 'Mark paid', onPress: () => markPaid(r) }]),
-      { text: 'Stop tracking', style: 'destructive' as const, onPress: () => deleteRecurring(r.id) },
-      { text: 'Cancel', style: 'cancel' as const },
+    const action = await choose(r.name, `${inr(r.amount)} every month on day ${r.day_of_month}`, [
+      ...(paid ? [] : [{ label: 'Mark paid', value: 'paid', icon: 'check' as const, tone: 'primary' as const }]),
+      { label: 'Edit bill', value: 'edit', icon: 'settings' as const, tone: 'plain' as const },
+      { label: 'Stop tracking', value: 'stop', icon: 'trash' as const, tone: 'danger' as const },
+      { label: 'Cancel', value: 'cancel', tone: 'cancel' as const },
     ]);
+    if (action === 'paid') markPaid(r);
+    if (action === 'edit') setForm(r);
+    if (action === 'stop' && (await confirm({ title: `Stop tracking ${r.name}?`, message: 'Past payments stay in your ledger.', confirm: 'Stop', destructive: true })))
+      deleteRecurring(r.id);
   }
 
   return (
@@ -71,7 +78,7 @@ export default function Bills() {
             {inr(dueTotal)} still due in {monthName(m)} · {items.length} tracked
           </Txt>
         </View>
-        <IconButton icon="plus" label="Add bill" color={C.ink} style={{ backgroundColor: C.volt, borderColor: C.volt }} onPress={() => setAdding(true)} />
+        <IconButton icon="plus" label="Add bill" color={C.ink} style={{ backgroundColor: C.volt, borderColor: C.volt }} onPress={() => setForm('new')} />
       </View>
 
       <Card style={{ paddingVertical: 20 }}>
@@ -120,9 +127,9 @@ export default function Bills() {
         </Rise>
       ))}
 
-      {items.length === 0 && !adding ? (
+      {items.length === 0 && !form ? (
         <Empty icon="repeat" title="No bills tracked yet" body="Add rent, Wi-Fi, EMIs and subscriptions to see what is due before it hits.">
-          <Button title="Add a bill" icon="plus" onPress={() => setAdding(true)} style={{ alignSelf: 'stretch', marginTop: 10 }} />
+          <Button title="Add a bill" icon="plus" onPress={() => setForm('new')} style={{ alignSelf: 'stretch', marginTop: 10 }} />
         </Empty>
       ) : (
         <View style={{ gap: 8 }}>
@@ -151,18 +158,18 @@ export default function Bills() {
         </View>
       )}
 
-      {adding && <AddBill onClose={() => setAdding(false)} />}
+      {form && <BillForm key={form === 'new' ? 'new' : form.id} bill={form === 'new' ? undefined : form} onClose={() => setForm(null)} />}
     </Screen>
   );
 }
 
-function AddBill({ onClose }: { onClose: () => void }) {
-  const { accounts, categories, addRecurring } = useLedger();
-  const [name, setName] = useState('');
-  const [amount, setAmount] = useState('');
-  const [day, setDay] = useState(String(new Date().getDate()));
-  const [accountId, setAccountId] = useState<string | null>(accounts.find((a) => a.kind !== 'cash')?.id ?? accounts[0]?.id ?? null);
-  const [categoryId, setCategoryId] = useState<string | null>(categories.find((c) => c.name === 'Bills')?.id ?? null);
+function BillForm({ bill, onClose }: { bill?: Recurring; onClose: () => void }) {
+  const { accounts, categories, addRecurring, updateRecurring } = useLedger();
+  const [name, setName] = useState(bill?.name ?? '');
+  const [amount, setAmount] = useState(bill ? String(bill.amount) : '');
+  const [day, setDay] = useState(String(bill?.day_of_month ?? new Date().getDate()));
+  const [accountId, setAccountId] = useState<string | null>(bill?.account_id ?? accounts.find((a) => a.kind !== 'cash')?.id ?? accounts[0]?.id ?? null);
+  const [categoryId, setCategoryId] = useState<string | null>(bill?.category_id ?? categories.find((c) => c.name === 'Bills')?.id ?? null);
   const [saving, setSaving] = useState(false);
   const d = Number(day);
   const ok = name.trim() && Number(amount) > 0 && d >= 1 && d <= 31;
@@ -170,10 +177,12 @@ function AddBill({ onClose }: { onClose: () => void }) {
   async function save() {
     setSaving(true);
     try {
-      await addRecurring({ name: name.trim(), amount: Number(amount), day_of_month: d, account_id: accountId, category_id: categoryId });
+      const fields = { name: name.trim(), amount: Number(amount), day_of_month: d, account_id: accountId, category_id: categoryId };
+      if (bill) await updateRecurring(bill.id, fields);
+      else await addRecurring(fields);
       onClose();
     } catch (e) {
-      Alert.alert('Could not add', e instanceof Error ? e.message : String(e));
+      notify(bill ? 'Could not save' : 'Could not add', e instanceof Error ? e.message : String(e));
       setSaving(false);
     }
   }
@@ -181,7 +190,7 @@ function AddBill({ onClose }: { onClose: () => void }) {
   return (
     <Rise>
       <Card style={{ gap: 12, borderColor: C.volt }}>
-        <Txt variant="title">New bill</Txt>
+        <Txt variant="title">{bill ? `Edit ${bill.name}` : 'New bill'}</Txt>
         <TextInput value={name} onChangeText={setName} placeholder="Netflix, rent, Wi-Fi…" placeholderTextColor={C.muted} style={styles.input} accessibilityLabel="Bill name" />
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <TextInput
@@ -219,7 +228,7 @@ function AddBill({ onClose }: { onClose: () => void }) {
         </ScrollView>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Button title="Cancel" variant="ghost" onPress={onClose} style={{ flex: 1 }} />
-          <Button title="Track bill" icon="check" onPress={save} busy={saving} disabled={!ok} style={{ flex: 1.4 }} />
+          <Button title={bill ? 'Save changes' : 'Track bill'} icon="check" onPress={save} busy={saving} disabled={!ok} style={{ flex: 1.4 }} />
         </View>
       </Card>
     </Rise>

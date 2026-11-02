@@ -14,6 +14,7 @@ type AuthState = {
   sendCode: (email: string, mode: AuthMode, name?: string) => Promise<void>;
   verifyCode: (email: string, code: string) => Promise<void>;
   signOut: () => Promise<void>;
+  updateName: (name: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -97,6 +98,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     async signOut() {
       await supabase.auth.signOut();
+    },
+    async updateName(name) {
+      const { data, error } = await supabase.auth.updateUser({ data: { display_name: name } });
+      if (error) fail(error);
+      if (data.user) await supabase.from('profiles').update({ display_name: name }).eq('id', data.user.id);
     },
   };
 

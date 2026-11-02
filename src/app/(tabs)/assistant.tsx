@@ -11,7 +11,7 @@ import { Txt } from '@/components/txt';
 import { tap } from '@/components/ui';
 import { useLedger } from '@/lib/ledger';
 import { askLedger, ping, type ChatMessage } from '@/lib/ollama';
-import { usePrefs } from '@/lib/prefs';
+import { setPrefs, usePrefs } from '@/lib/prefs';
 import { ledgerDigest } from '@/lib/stats';
 import { C, F } from '@/theme/tokens';
 
@@ -27,7 +27,7 @@ const bounce = css.keyframes({
 export default function Assistant() {
   const { q } = useLocalSearchParams<{ q?: string }>();
   const { txns, accounts, categories } = useLedger();
-  const { ollamaModel, ollamaUrl } = usePrefs();
+  const { ollamaModel, ollamaUrl, aiEnabled } = usePrefs();
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -41,7 +41,7 @@ export default function Assistant() {
     return () => {
       alive = false;
     };
-  }, [ollamaModel, ollamaUrl]);
+  }, [ollamaModel, ollamaUrl, aiEnabled]);
 
   async function send(text: string) {
     const question = text.trim();
@@ -72,6 +72,32 @@ export default function Assistant() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
+
+  if (!aiEnabled) {
+    return (
+      <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: C.ink, justifyContent: 'center', padding: 28, paddingBottom: 120, gap: 16, alignItems: 'center' }}>
+        <View style={{ width: 120, height: 120, alignItems: 'center', justifyContent: 'center' }}>
+          <Spin duration={14000} style={StyleSheet.absoluteFill}>
+            <Svg width={120} height={120}>
+              <Circle cx={60} cy={60} r={54} fill="none" stroke={C.ionLine} strokeWidth={1.5} strokeDasharray={[3, 7]} />
+              <Circle cx={60} cy={6} r={4} fill={C.ion} />
+            </Svg>
+          </Spin>
+          <Icon name="sparkle" size={40} color={C.muted} />
+        </View>
+        <Txt variant="display" style={{ textAlign: 'center' }}>
+          Ginti AI is off
+        </Txt>
+        <Txt style={{ color: C.muted, textAlign: 'center', lineHeight: 21 }}>
+          Expenses are still read on your phone. Turn AI on to chat about your money and scan receipts with the model on your PC.
+        </Txt>
+        <Pressable onPress={() => setPrefs({ aiEnabled: true })} style={[styles.send, { width: undefined, paddingHorizontal: 22, flexDirection: 'row', gap: 8 }]}>
+          <Icon name="sparkle" size={18} color={C.ink} strokeWidth={2} />
+          <Txt style={{ fontFamily: F.semibold, color: C.ink }}>Turn on Ginti AI</Txt>
+        </Pressable>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: C.ink }}>

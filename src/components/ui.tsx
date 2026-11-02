@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Icon, type IconName } from '@/components/icon';
+import { Icon, isIconName, type IconName } from '@/components/icon';
 import { Txt } from '@/components/txt';
 import { C, F, R } from '@/theme/tokens';
 
@@ -163,12 +163,11 @@ export function SectionHeader({ title, action, onAction }: { title: string; acti
 export function CategoryBadge({ color, icon, size = 40 }: { color: string; icon: string; size?: number }) {
   return (
     <View style={{ width: size, height: size, borderRadius: size / 3, backgroundColor: color + '22', alignItems: 'center', justifyContent: 'center' }}>
-      <Icon name={(icon in ICONS ? icon : 'dot') as IconName} size={size * 0.48} color={color} />
+      <Icon name={isIconName(icon) ? icon : 'dot'} size={size * 0.48} color={color} />
     </View>
   );
 }
 
-const ICONS: Record<string, true> = { food: true, home: true, bag: true, bus: true, bolt: true, heart: true, game: true, wallet: true, dot: true, cash: true, bank: true, card: true };
 
 export function Empty({ icon, title, body, children }: { icon: IconName; title: string; body: string; children?: ReactNode }) {
   return (

@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
+import { choose } from '@/components/dialog';
 import { Icon } from '@/components/icon';
 import { Float, Rise, Spin } from '@/components/motion';
 import { Txt } from '@/components/txt';
@@ -100,9 +101,15 @@ export default function Accounts() {
             return (
               <Rise key={a.id} delay={i * 70}>
                 <Pressable
-                  onPress={() => {
+                  onPress={async () => {
                     tap();
-                    router.push({ pathname: '/insights', params: { filter: a.id } });
+                    const action = await choose(a.name, `Balance ${inr(a.balance)}`, [
+                      { label: 'View spending', value: 'insights', icon: 'chart', tone: 'plain' },
+                      { label: 'Edit account', value: 'edit', icon: 'settings', tone: 'plain' },
+                      { label: 'Cancel', value: 'cancel', tone: 'cancel' },
+                    ]);
+                    if (action === 'insights') router.push({ pathname: '/insights', params: { filter: a.id } });
+                    if (action === 'edit') router.push({ pathname: '/new-account', params: { id: a.id } });
                   }}
                   style={({ pressed }) => [styles.row, pressed && { opacity: 0.8 }]}>
                   <View style={[styles.rowIcon, { backgroundColor: a.color + '22' }]}>

@@ -7,7 +7,13 @@ export type IconName =
   | 'home' | 'chart' | 'plus' | 'card' | 'sparkle' | 'bell' | 'chevron-down' | 'chevron-right'
   | 'close' | 'back' | 'arrow' | 'scan' | 'fingerprint' | 'face' | 'lock' | 'settings' | 'send'
   | 'mic' | 'bank' | 'cash' | 'food' | 'bus' | 'bag' | 'bolt' | 'heart' | 'game' | 'wallet' | 'dot'
-  | 'check' | 'sync' | 'user' | 'calendar' | 'target' | 'repeat' | 'logout';
+  | 'check' | 'sync' | 'user' | 'calendar' | 'target' | 'repeat' | 'logout'
+  | 'gift' | 'book' | 'plane' | 'phone' | 'paw' | 'coffee' | 'shirt' | 'school' | 'trash';
+
+/** Icons a category can use, in picker order. */
+export const CATEGORY_ICONS: IconName[] = ['food', 'coffee', 'home', 'bag', 'shirt', 'bus', 'plane', 'bolt', 'phone', 'heart', 'game', 'gift', 'book', 'school', 'paw', 'wallet', 'cash', 'card', 'bank', 'dot'];
+
+export const isIconName = (name: string): name is IconName => name in PATHS;
 
 type Props = { name: IconName; size?: number; color?: string; strokeWidth?: number };
 
@@ -71,4 +77,13 @@ const PATHS: Record<IconName, (p: P) => ReactNode> = {
   target: (p) => (<><Circle {...p} cx={12} cy={12} r={9} /><Circle {...p} cx={12} cy={12} r={5} /><Circle {...p} cx={12} cy={12} r={1} /></>),
   repeat: (p) => <Path {...p} d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3" />,
   logout: (p) => <Path {...p} d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />,
+  gift: (p) => (<><Rect {...p} x={3} y={8} width={18} height={4} rx={1} /><Path {...p} d="M12 8v13M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5" /></>),
+  book: (p) => <Path {...p} d="M4 19.5V5a2 2 0 0 1 2-2h14v16H6.5A2.5 2.5 0 0 0 4 21.5zM4 19.5A2.5 2.5 0 0 1 6.5 17H20" />,
+  plane: (p) => <Path {...p} d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" />,
+  phone: (p) => (<><Rect {...p} x={7} y={2} width={10} height={20} rx={2} /><Path {...p} d="M11 18h2" /></>),
+  paw: (p) => (<><Circle {...p} cx={11} cy={4} r={2} /><Circle {...p} cx={18} cy={8} r={2} /><Circle {...p} cx={20} cy={16} r={2} /><Path {...p} d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.05Q6.52 17.48 4.46 16.84A3.5 3.5 0 0 1 5.5 10Z" /></>),
+  coffee: (p) => <Path {...p} d="M10 2v2M14 2v2M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1" />,
+  shirt: (p) => <Path {...p} d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z" />,
+  school: (p) => <Path {...p} d="M22 10 12 5 2 10l10 5 10-5zM6 12v5c3 3 9 3 12 0v-5" />,
+  trash: (p) => <Path {...p} d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6" />,
 };

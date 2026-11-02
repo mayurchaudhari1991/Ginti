@@ -8,9 +8,15 @@ export type Prefs = {
   ollamaUrl: string;
   ollamaModel: string;
   monthlyBudget: number;
+  /** Use the Ollama model for entry parsing, receipts and chat. Off = everything runs on the phone. */
+  aiEnabled: boolean;
+  /** Set once the one-time re-sort of "Other" entries has run (v1.2.0). */
+  tidiedCategories: boolean;
 };
 
 const DEFAULTS: Prefs = {
+  aiEnabled: true,
+  tidiedCategories: false,
   biometricLock: true,
   autoLockSeconds: 60,
   ollamaUrl: process.env.EXPO_PUBLIC_OLLAMA_URL ?? 'http://192.168.0.147:11434',

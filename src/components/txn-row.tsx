@@ -1,5 +1,7 @@
-import { Alert, Pressable, View } from 'react-native';
+import { router } from 'expo-router';
+import { Pressable, View } from 'react-native';
 
+import { choose, confirm, notify } from '@/components/dialog';
 import { Txt } from '@/components/txt';
 import { CategoryBadge, tap } from '@/components/ui';
 import { inr, timeLabel } from '@/lib/format';
@@ -7,7 +9,7 @@ import { useLedger } from '@/lib/ledger';
 import type { Txn } from '@/lib/types';
 import { C } from '@/theme/tokens';
 
-/** One ledger entry. Long-press offers delete. */
+/** One ledger entry. Tap to edit; long-press for edit or delete. */
 export function TxnRow({ txn }: { txn: Txn }) {
   const { categories, accounts, deleteTxn } = useLedger();
   const cat = categories.find((c) => c.id === txn.category_id);
@@ -19,14 +21,30 @@ export function TxnRow({ txn }: { txn: Txn }) {
   const color = txn.kind === 'transfer' ? C.ion : (cat?.color ?? C.muted);
   const amount = txn.kind === 'income' ? inr(txn.amount, { sign: true }) : txn.kind === 'expense' ? inr(-txn.amount) : inr(txn.amount);
 
+  const edit = () => router.push({ pathname: '/add', params: { id: txn.id } });
+
+  async function remove() {
+    if (!(await confirm({ title: 'Delete entry?', message: `${title} · ${inr(txn.amount)}`, confirm: 'Delete', destructive: true }))) return;
+    deleteTxn(txn.id).catch((e) => notify('Could not delete', e instanceof Error ? e.message : String(e)));
+  }
+
   return (
     <Pressable
-      onLongPress={() => {
+      accessibilityRole="button"
+      accessibilityHint="Opens the entry to edit"
+      onPress={() => {
         tap();
-        Alert.alert('Delete entry?', `${title} · ${inr(txn.amount)}`, [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: () => deleteTxn(txn.id).catch((e) => Alert.alert('Could not delete', String(e.message ?? e))) },
+        edit();
+      }}
+      onLongPress={async () => {
+        tap();
+        const action = await choose(title, `${inr(txn.amount)} · ${meta.toLowerCase()}`, [
+          { label: 'Edit entry', value: 'edit', icon: 'settings', tone: 'plain' },
+          { label: 'Delete entry', value: 'delete', icon: 'trash', tone: 'danger' },
+          { label: 'Cancel', value: 'cancel', tone: 'cancel' },
         ]);
+        if (action === 'edit') edit();
+        if (action === 'delete') remove();
       }}
       style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 }, pressed && { opacity: 0.7 }]}>
       <CategoryBadge color={color} icon={txn.kind === 'transfer' ? 'cash' : (cat?.icon ?? 'dot')} />

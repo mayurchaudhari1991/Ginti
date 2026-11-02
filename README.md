@@ -28,6 +28,8 @@ Built with Expo SDK 58 (React Native 0.88), Expo Router, Reanimated 4 CSS animat
 3. Reconnect the cable and accept the "Allow USB debugging" prompt.
 4. Check with `%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe devices`.
 
+No cable: Developer options → **Wireless debugging** → on → **Pair device with pairing code**. Then `adb mdns services` shows the phone's pairing and connect ports; run `adb pair <ip>:<pairing port> <code>` and `adb connect <ip>:<connect port>`. Phone and PC must share the Wi-Fi.
+
 ### 3. Ollama
 
 The app talks to Ollama at `EXPO_PUBLIC_OLLAMA_URL` (changeable in Settings) using `gemma4:e2b`.

@@ -14,8 +14,18 @@ const KEYWORDS: Record<string, string[]> = {
 // Whole-word prefixes: "grocer" matches "groceries", but "ola" never matches "cola" and "emi" never matches "premium".
 const PATTERNS = Object.entries(KEYWORDS).map(([cat, words]) => [cat, new RegExp(`\\b(?:${words.join('|')})`, 'i')] as const);
 
-/** Best keyword match for a description, falling back to Other / Other income. */
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Best match for a description. The user's own category names win ("Petrol" catches "petrol pump"),
+ * then the built-in keywords, then Other / Other income.
+ */
 export function guessCategory(text: string, kind: TxnKind, categories: Category[]) {
+  const own = categories
+    .filter((c) => c.kind === kind && !/^other( income)?$/i.test(c.name))
+    .sort((a, b) => b.name.length - a.name.length)
+    .find((c) => new RegExp(`\\b${escape(c.name)}`, 'i').test(text));
+  if (own) return own.id;
   const name = PATTERNS.find(([, re]) => re.test(text))?.[0] ?? (kind === 'income' ? 'Other income' : 'Other');
   return (
     categories.find((c) => c.name === name && c.kind === kind)?.id ??

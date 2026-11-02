@@ -9,6 +9,7 @@ import { useEffect } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { DialogHost } from '@/components/dialog';
 import { LockScreen } from '@/components/lock-screen';
 import { SplashOverlay } from '@/components/splash';
 import { AuthProvider, useAuth } from '@/lib/auth';
@@ -69,6 +70,7 @@ function AppStack() {
           <Stack.Screen name="import" />
           <Stack.Screen name="scan" options={{ animation: 'fade' }} />
           <Stack.Screen name="recurring" />
+          <Stack.Screen name="categories" />
           <Stack.Screen name="history" />
           <Stack.Screen name="wrapped" options={{ animation: 'fade', presentation: 'fullScreenModal' }} />
         </Stack.Protected>
@@ -79,6 +81,7 @@ function AppStack() {
       </Stack>
       {signedIn && locked && <LockScreen name={firstName(session)} />}
       <SplashOverlay ready={ready && (!signedIn || !loading)} />
+      <DialogHost />
     </View>
   );
 }
