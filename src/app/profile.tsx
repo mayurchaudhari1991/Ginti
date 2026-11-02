@@ -30,7 +30,7 @@ function logStreak(dates: string[]) {
 
 export default function Profile() {
   const { session, signOut } = useAuth();
-  const { txns, accounts, categories } = useLedger();
+  const { txns, accounts, categories, recurring } = useLedger();
   const { monthlyBudget } = usePrefs();
   const name = firstName(session) ?? 'You';
 
@@ -48,10 +48,13 @@ export default function Profile() {
   const progress = (stats.entries % 50) / 50;
   const ringC = 2 * Math.PI * 58;
 
-  const menu: { icon: IconName; label: string; value?: string; to: '/settings' | '/accounts' | '/budgets' | '/insights' }[] = [
+  const menu: { icon: IconName; label: string; value?: string; to: '/settings' | '/accounts' | '/budgets' | '/insights' | '/recurring' | '/history' | '/wrapped' | '/import' }[] = [
+    { icon: 'sparkle', label: `${new Date().getFullYear()} year in review`, to: '/wrapped' },
     { icon: 'target', label: 'Budgets by category', value: String(categories.filter((c) => c.monthly_budget).length), to: '/budgets' },
+    { icon: 'repeat', label: 'Bills and subscriptions', value: String(recurring.length), to: '/recurring' },
+    { icon: 'calendar', label: 'Spend calendar', to: '/history' },
     { icon: 'card', label: 'Banks and cash wallets', value: String(accounts.length), to: '/accounts' },
-    { icon: 'chart', label: 'Insights', to: '/insights' },
+    { icon: 'sync', label: 'Auto-import', to: '/import' },
     { icon: 'settings', label: 'Settings', to: '/settings' },
   ];
 

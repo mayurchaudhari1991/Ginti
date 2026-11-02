@@ -11,7 +11,7 @@ import { Txt } from '@/components/txt';
 import { Button, CategoryBadge, IconButton, Segmented, tap } from '@/components/ui';
 import { inr } from '@/lib/format';
 import { useLedger } from '@/lib/ledger';
-import { parseEntry, type ParsedEntry } from '@/lib/ollama';
+import { parseLocally, parseWithModel, type ParsedEntry } from '@/lib/ollama';
 import type { TxnKind } from '@/lib/types';
 import { C, F } from '@/theme/tokens';
 
@@ -39,11 +39,7 @@ export default function AddEntry() {
     const text = sentence.trim();
     if (text.length < 3 || !/\d/.test(text)) return;
     const seq = ++parseSeq.current;
-    const t = setTimeout(async () => {
-      setParsing(true);
-      const result = await parseEntry(text, categories, liveAccounts);
-      if (seq !== parseSeq.current) return;
-      setParsing(false);
+    const apply = (result: ParsedEntry) => {
       setParsed(result);
       if (result.amount > 0) setAmount(String(result.amount));
       setKind(result.kind);
@@ -52,8 +48,22 @@ export default function AddEntry() {
       setNote(result.note);
       const d = Math.round((Date.now() - new Date(result.occurredAt).getTime()) / 86400000);
       setDaysAgo(Math.max(0, d));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    }, 700);
+    };
+    const t = setTimeout(async () => {
+      // Fill the form instantly from the on-phone parser, then refine when the model answers (~15 s).
+      apply(parseLocally(text, categories, liveAccounts));
+      setParsing(true);
+      try {
+        const result = await parseWithModel(text, categories, liveAccounts);
+        if (seq !== parseSeq.current) return;
+        apply(result);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      } catch {
+        // PC unreachable or reply unusable: the on-phone result stands.
+      } finally {
+        if (seq === parseSeq.current) setParsing(false);
+      }
+    }, 600);
     return () => clearTimeout(t);
     // Categories and accounts are stable while this screen is open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -103,7 +113,7 @@ export default function AddEntry() {
               { value: 'transfer', label: 'Transfer' },
             ]}
           />
-          <IconButton icon="scan" label="Scan receipt (coming soon)" color={C.muted} onPress={() => Alert.alert('Receipt scan', 'Coming in the next build.')} />
+          <IconButton icon="scan" label="Scan receipt" onPress={() => router.replace('/scan')} />
         </View>
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">

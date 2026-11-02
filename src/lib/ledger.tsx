@@ -2,9 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
-import type { Account, Category, NewAccount, NewTxn, Txn } from '@/lib/types';
+import type { Account, Category, NewAccount, NewRecurring, NewTxn, Recurring, Txn } from '@/lib/types';
 
-type Snapshot = { userId: string; accounts: Account[]; categories: Category[]; txns: Txn[] };
+type Snapshot = { userId: string; accounts: Account[]; categories: Category[]; txns: Txn[]; recurring: Recurring[] };
 
 type Ledger = {
   loading: boolean;
@@ -12,7 +12,10 @@ type Ledger = {
   accounts: Account[];
   categories: Category[];
   txns: Txn[];
+  recurring: Recurring[];
   refresh: () => Promise<void>;
+  addRecurring: (r: NewRecurring) => Promise<void>;
+  deleteRecurring: (id: string) => Promise<void>;
   addTxn: (t: NewTxn) => Promise<void>;
   /** Inserts auto-detected entries; ones already imported (same external_ref) are skipped. Returns how many were added. */
   importTxns: (list: NewTxn[]) => Promise<number>;
@@ -67,15 +70,17 @@ async function seedDefaults() {
 }
 
 async function fetchLedger(userId: string, seeded = false): Promise<Snapshot> {
-  const [acc, bal, cat, txns] = await Promise.all([
+  const [acc, bal, cat, rec, txns] = await Promise.all([
     supabase.from('accounts').select('id, name, kind, last4, color, opening_balance, archived').order('created_at'),
     supabase.from('account_balances').select('id, balance'),
     supabase.from('categories').select('id, name, color, icon, kind, monthly_budget, sort').order('sort'),
+    supabase.from('recurring').select('id, name, amount, account_id, category_id, day_of_month, active').order('day_of_month'),
     fetchAllTxns(),
   ]);
   if (acc.error) throw acc.error;
   if (bal.error) throw bal.error;
   if (cat.error) throw cat.error;
+  if (rec.error) throw rec.error;
   if (!seeded && acc.data.length === 0 && cat.data.length === 0) {
     await seedDefaults();
     return fetchLedger(userId, true);
@@ -85,6 +90,7 @@ async function fetchLedger(userId: string, seeded = false): Promise<Snapshot> {
     userId,
     accounts: acc.data.map((a) => ({ ...a, opening_balance: Number(a.opening_balance), balance: balances.get(a.id) ?? 0 }) as Account),
     categories: cat.data.map((c) => ({ ...c, monthly_budget: c.monthly_budget == null ? null : Number(c.monthly_budget) }) as Category),
+    recurring: rec.data.map((r) => ({ ...r, amount: Number(r.amount) }) as Recurring),
     txns,
   };
 }
@@ -132,7 +138,18 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     accounts: current?.accounts ?? [],
     categories: current?.categories ?? [],
     txns: current?.txns ?? [],
+    recurring: current?.recurring ?? [],
     refresh,
+    async addRecurring(r) {
+      const { error } = await supabase.from('recurring').insert(r);
+      if (error) throw error;
+      await refresh();
+    },
+    async deleteRecurring(id) {
+      const { error } = await supabase.from('recurring').delete().eq('id', id);
+      if (error) throw error;
+      patch((s) => ({ ...s, recurring: s.recurring.filter((r) => r.id !== id) }));
+    },
     async addTxn(t) {
       const { data, error } = await supabase.from('transactions').insert(t).select().single();
       if (error) throw error;

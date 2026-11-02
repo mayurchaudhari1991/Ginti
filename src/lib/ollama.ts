@@ -1,7 +1,8 @@
+import { guessCategory } from '@/lib/categorize';
 import { getPrefs } from '@/lib/prefs';
 import type { Account, Category, TxnKind } from '@/lib/types';
 
-export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string; images?: string[] };
 
 async function post<T>(path: string, body: unknown, timeoutMs: number): Promise<T> {
   const { ollamaUrl } = getPrefs();
@@ -43,10 +44,72 @@ export async function chat(messages: ChatMessage[], opts: { format?: object; tim
   const { ollamaModel } = getPrefs();
   const data = await post<{ message: { content: string } }>(
     '/api/chat',
+    // No `think` flag: on Ollama 0.20 sending think:false makes Gemma 4 emit stray tool calls instead of an answer.
     { model: ollamaModel, messages, stream: false, format: opts.format, options: { temperature: 0.2 } },
     opts.timeoutMs ?? 60000,
   );
-  return data.message.content.trim();
+  return cleanReply(data.message.content);
+}
+
+/**
+ * Older Ollama builds ignore `think: false` for Gemma 4 and prepend its reasoning, ending with a
+ * `<channel|>` marker. Keep only what follows the last marker.
+ */
+function cleanReply(text: string) {
+  const marker = text.lastIndexOf('<channel|>');
+  return (marker >= 0 ? text.slice(marker + '<channel|>'.length) : text).replace(/<\|?[a-z_]+\|?>/g, '').trim();
+}
+
+/** Finds the JSON object in a reply even when the model wraps it in prose or a ``` fence. */
+export function extractJson<T>(text: string): T {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/)?.[1];
+  for (const candidate of [fenced, text]) {
+    if (!candidate) continue;
+    const start = candidate.indexOf('{');
+    const end = candidate.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(candidate.slice(start, end + 1)) as T;
+      } catch {
+        // try the next candidate
+      }
+    }
+  }
+  throw new Error('No JSON in model reply');
+}
+
+export type ReceiptRead = { merchant: string; total: number; date: string | null; category: string; items: number };
+
+/** Reads a receipt photo (base64 JPEG) with the vision model on the PC. */
+export async function readReceipt(base64: string, categories: Category[]): Promise<ReceiptRead> {
+  const names = categories.filter((c) => c.kind === 'expense').map((c) => c.name);
+  const content = await chat(
+    [
+      {
+        role: 'system',
+        content:
+          'You read shop and restaurant receipts from India. Return the store name, the final amount paid in rupees ' +
+          '(the grand total after tax, not a subtotal), the date as YYYY-MM-DD if printed, the number of line items, ' +
+          `and the best category from: ${names.join(', ')}. Reply with JSON only.`,
+      },
+      { role: 'user', content: 'Read this receipt.', images: [base64] },
+    ],
+    {
+      timeoutMs: 90000,
+      format: {
+        type: 'object',
+        properties: {
+          merchant: { type: 'string' },
+          total: { type: 'number' },
+          date: { type: ['string', 'null'] },
+          category: { type: 'string', enum: names },
+          items: { type: 'integer' },
+        },
+        required: ['merchant', 'total', 'date', 'category', 'items'],
+      },
+    },
+  );
+  return extractJson<ReceiptRead>(content);
 }
 
 export type ParsedEntry = {
@@ -68,7 +131,7 @@ export async function parseEntry(text: string, categories: Category[], accounts:
   }
 }
 
-async function parseWithModel(text: string, categories: Category[], accounts: Account[]): Promise<ParsedEntry> {
+export async function parseWithModel(text: string, categories: Category[], accounts: Account[]): Promise<ParsedEntry> {
   const expenseCats = categories.filter((c) => c.kind === 'expense').map((c) => c.name);
   const incomeCats = categories.filter((c) => c.kind === 'income').map((c) => c.name);
   const accountNames = accounts.map((a) => a.name);
@@ -98,45 +161,23 @@ async function parseWithModel(text: string, categories: Category[], accounts: Ac
       },
       { role: 'user', content: text },
     ],
-    { format: schema, timeoutMs: 25000 },
+    // A cold model takes ~50 s to load on this PC; warm replies take ~15 s.
+    { format: schema, timeoutMs: 45000 },
   );
-  const out = JSON.parse(content) as { amount: number; kind: TxnKind; category: string; account: string; note: string; days_ago: number };
+  const out = extractJson<{ amount: number; kind: string; category: string; account: string; note: string; days_ago: number }>(content);
   if (!(out.amount > 0)) throw new Error('No amount');
+  const kind: TxnKind = out.kind?.toLowerCase() === 'income' ? 'income' : 'expense';
   const when = new Date();
   when.setDate(when.getDate() - Math.max(0, out.days_ago || 0));
   return {
     amount: out.amount,
-    kind: out.kind,
-    categoryId: categories.find((c) => c.name === out.category && c.kind === out.kind)?.id ?? null,
-    accountId: accounts.find((a) => a.name === out.account)?.id ?? null,
+    kind,
+    categoryId: categories.find((c) => c.name.toLowerCase() === out.category?.toLowerCase() && c.kind === kind)?.id ?? null,
+    accountId: accounts.find((a) => a.name.toLowerCase() === out.account?.toLowerCase())?.id ?? null,
     note: out.note,
     occurredAt: when.toISOString(),
     by: 'ai',
   };
-}
-
-const KEYWORDS: Record<string, string[]> = {
-  Food: ['swiggy', 'zomato', 'food', 'dinner', 'lunch', 'breakfast', 'tea', 'chai', 'coffee', 'snack', 'grocer', 'restaurant', 'pizza', 'blinkit', 'zepto'],
-  Travel: ['uber', 'ola', 'auto', 'metro', 'bus', 'train', 'cab', 'petrol', 'fuel', 'rapido', 'flight'],
-  Shopping: ['amazon', 'flipkart', 'myntra', 'shirt', 'shoes', 'shopping', 'clothes'],
-  Bills: ['bill', 'electricity', 'recharge', 'wifi', 'broadband', 'gas', 'water', 'emi'],
-  Health: ['medicine', 'doctor', 'pharmacy', 'gym', 'hospital'],
-  Fun: ['movie', 'netflix', 'spotify', 'game', 'party', 'concert'],
-  Home: ['rent', 'maid', 'furniture', 'repair'],
-  Salary: ['salary', 'stipend'],
-};
-
-/** Best keyword match for a description, falling back to Other / Other income. */
-export function guessCategory(text: string, kind: TxnKind, categories: Category[]) {
-  const lower = text.toLowerCase();
-  let name = kind === 'income' ? 'Other income' : 'Other';
-  for (const [cat, words] of Object.entries(KEYWORDS)) {
-    if (words.some((w) => lower.includes(w))) {
-      name = cat;
-      break;
-    }
-  }
-  return categories.find((c) => c.name === name && c.kind === kind)?.id ?? null;
 }
 
 /** Keyword fallback so adding an entry still works when the PC is off. */

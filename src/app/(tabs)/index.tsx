@@ -151,6 +151,34 @@ export default function Home() {
           <View style={{ width: 10 }} />
         </ScrollView>
 
+        <View style={styles.tiles}>
+          {(
+            [
+              { icon: 'scan', label: 'Scan bill', to: '/scan', tint: C.volt },
+              { icon: 'repeat', label: 'Bills', to: '/recurring', tint: '#FFD23F' },
+              { icon: 'calendar', label: 'Calendar', to: '/history', tint: '#4CC9FF' },
+              { icon: 'sparkle', label: `${y} wrap`, to: '/wrapped', tint: C.ion },
+            ] as const
+          ).map((t, i) => (
+            <Rise key={t.to} delay={i * 60} style={{ flex: 1 }}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  tap();
+                  router.push(t.to);
+                }}
+                style={({ pressed }) => [styles.tile, pressed && { transform: [{ scale: 0.96 }] }]}>
+                <View style={[styles.tileIcon, { backgroundColor: t.tint + '22' }]}>
+                  <Icon name={t.icon} size={18} color={t.tint} />
+                </View>
+                <Txt style={{ fontSize: 12, color: C.text2 }} numberOfLines={1}>
+                  {t.label}
+                </Txt>
+              </Pressable>
+            </Rise>
+          ))}
+        </View>
+
         {inboxAvailable && (
           <Pressable
             onPress={() => {
@@ -223,6 +251,9 @@ const styles = StyleSheet.create({
   hero: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 26, padding: 20 },
   accountCard: { width: 132, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 18, padding: 14 },
   addAccount: { borderStyle: 'dashed', borderColor: C.line2, alignItems: 'center', justifyContent: 'center', backgroundColor: C.ink2 },
+  tiles: { flexDirection: 'row', gap: 10 },
+  tile: { alignItems: 'center', gap: 8, paddingVertical: 14, borderRadius: 18, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line },
+  tileIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   importCard: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 20 },
   importIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: C.volt, alignItems: 'center', justifyContent: 'center' },
   aiCard: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 20 },

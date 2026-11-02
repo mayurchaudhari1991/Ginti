@@ -2,7 +2,7 @@
   "expo": {
     "name": "Ginti",
     "slug": "ginti",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ginti",
@@ -14,6 +14,7 @@
     },
     "android": {
       "package": "app.ginti",
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#C8FF4D",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -44,6 +45,13 @@
       ],
       "expo-secure-store",
       "expo-sqlite",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Ginti uses the camera to scan receipts.",
+          "recordAudioAndroid": false
+        }
+      ],
       [
         "expo-build-properties",
         {

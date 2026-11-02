@@ -37,3 +37,15 @@ export type Txn = {
 
 export type NewTxn = Omit<Txn, 'id' | 'source'> & { source?: TxnSource; external_ref?: string };
 export type NewAccount = Pick<Account, 'name' | 'kind' | 'last4' | 'color' | 'opening_balance'>;
+
+export type Recurring = {
+  id: string;
+  name: string;
+  amount: number;
+  account_id: string | null;
+  category_id: string | null;
+  day_of_month: number;
+  active: boolean;
+};
+
+export type NewRecurring = Omit<Recurring, 'id' | 'active'>;

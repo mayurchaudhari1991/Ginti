@@ -1,5 +1,5 @@
 import type { InboxMessage } from '@/modules/ginti-inbox';
-import { guessCategory } from '@/lib/ollama';
+import { guessCategory } from '@/lib/categorize';
 import type { Account, Category, TxnKind } from '@/lib/types';
 
 /** A money movement found in an SMS or notification, waiting for the user to approve it. */
@@ -19,6 +19,8 @@ export type Detected = {
 };
 
 const AMOUNT = /(?:rs\.?|inr|₹)\s?([\d,]+(?:\.\d{1,2})?)/i;
+// SBI and some others write "debited by 1284.0" with no currency marker; trusted only from bank senders.
+const VERB_AMOUNT = /\b(?:debited|credited|withdrawn|spent|paid|sent)\s+(?:by|for|of|with)?\s*([\d,]+(?:\.\d{1,2})?)\b/i;
 const DEBIT = /\b(debited|spent|paid|sent|withdrawn|purchase|transferred to|txn of)\b/i;
 const CREDIT = /\b(credited|received|deposited|refund(?:ed)?)\b/i;
 // Bills, reminders, OTPs and offers mention amounts but are not money that moved.
@@ -63,9 +65,9 @@ function merchantOf(body: string, kind: TxnKind) {
   if (upi) return titleCase(upi[1]);
   const patterns =
     kind === 'income'
-      ? [/(?:from|by)\s+(?:vpa\s+)?([a-z0-9@._&' -]{2,40}?)(?=\s+(?:on|ref|upi|via|to|avl|info)\b|[.,(]|$)/i]
+      ? [/(?:from|by)\s+(?:vpa\s+)?([a-z0-9@._&' -]{2,40}?)(?=\s+(?:on|ref|refno|upi|via|to|avl|info|txn|imps|neft)\b|[.,(]|$)/i]
       : [
-          /(?:to|at|towards|for)\s+(?:vpa\s+)?([a-z0-9@._&' -]{2,40}?)(?=\s+(?:on|ref|upi|via|using|from|avl|info|bal)\b|[.,(]|$)/i,
+          /(?:to|at|towards|for)\s+(?:vpa\s+)?([a-z0-9@._&' -]{2,40}?)(?=\s+(?:on|ref|refno|upi|via|using|from|avl|info|bal|txn|imps|neft)\b|[.,(]|$)/i,
           /info:?\s*([a-z0-9@._ -]{2,40})/i,
         ];
   for (const p of patterns) {
@@ -98,7 +100,8 @@ export function parseMessage(msg: InboxMessage, source: Detected['source'], acco
   // Texts from personal numbers are conversations, not bank alerts.
   if (source === 'sms' && /^\+?\d{8,}$/.test(msg.address.replace(/\s/g, ''))) return null;
   if (SKIP.test(body)) return null;
-  const amountMatch = body.match(AMOUNT);
+  const fromBank = BANKS.some(([re]) => re.test(msg.address));
+  const amountMatch = body.match(AMOUNT) ?? (fromBank ? body.match(VERB_AMOUNT) : null);
   if (!amountMatch) return null;
   const amount = Number(amountMatch[1].replace(/,/g, ''));
   if (!(amount > 0)) return null;

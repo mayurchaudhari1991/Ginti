@@ -67,6 +67,10 @@ function AppStack() {
           <Stack.Screen name="settings" />
           <Stack.Screen name="budgets" />
           <Stack.Screen name="import" />
+          <Stack.Screen name="scan" options={{ animation: 'fade' }} />
+          <Stack.Screen name="recurring" />
+          <Stack.Screen name="history" />
+          <Stack.Screen name="wrapped" options={{ animation: 'fade', presentation: 'fullScreenModal' }} />
         </Stack.Protected>
         <Stack.Protected guard={!signedIn}>
           <Stack.Screen name="sign-in" />
