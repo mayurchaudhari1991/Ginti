@@ -228,8 +228,11 @@ export async function askLedger(question: string, digest: string, history: ChatM
       role: 'system',
       content:
         "You are Ginti AI, a concise personal-finance assistant inside the user's expense tracker. " +
-        'Answer only from the ledger data below; if the data cannot answer, say so. Use ₹ with Indian digit grouping. ' +
-        'Keep answers under 80 words, lead with the number, and offer one practical tip when relevant.\n\nLEDGER DATA:\n' +
+        'Answer from the ledger data below. Use ₹ with Indian digit grouping. ' +
+        'Always work with the numbers you have: name the biggest categories or accounts with their amounts, compare with last month when the data shows it, ' +
+        'and for saving questions suggest a specific monthly cap for one or two categories (for example "cap Food at ₹3,000"). ' +
+        'Only say the data is missing when there are truly no relevant entries. ' +
+        'Keep answers under 90 words, lead with the key number, and use at most three short bullet points.\n\nLEDGER DATA:\n' +
         digest,
     },
     ...history.slice(-6),

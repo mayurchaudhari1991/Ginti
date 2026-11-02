@@ -17,6 +17,12 @@ import { C, F } from '@/theme/tokens';
 
 const SUGGESTIONS = ['Where can I save this month?', 'Compare this month with last month', 'How much cash did I spend this year?', 'Which bank account do I spend most from?'];
 
+/** Turns the model's light markdown into display parts: **bold** runs, and "* item" bullets as "•". */
+function formatReply(text: string) {
+  const clean = text.replace(/^\s*[*-]\s+/gm, '• ').replace(/^#+\s*/gm, '');
+  return clean.split(/\*\*(.+?)\*\*/g).map((t, i) => ({ text: t, bold: i % 2 === 1 }));
+}
+
 const bounce = css.keyframes({
   '0%': { transform: [{ translateY: 0 }], opacity: 0.35 },
   '40%': { transform: [{ translateY: -5 }], opacity: 1 },
@@ -152,7 +158,17 @@ export default function Assistant() {
               </Rise>
             ) : (
               <Rise key={i} style={styles.aiBubble}>
-                <Txt style={{ color: C.ionTextSoft, fontSize: 14, lineHeight: 21 }}>{msg.content}</Txt>
+                <Txt style={{ color: C.ionTextSoft, fontSize: 14, lineHeight: 21 }}>
+                  {formatReply(msg.content).map((part, j) =>
+                    part.bold ? (
+                      <Txt key={j} style={{ fontFamily: F.semibold, color: C.text, fontSize: 14, lineHeight: 21 }}>
+                        {part.text}
+                      </Txt>
+                    ) : (
+                      part.text
+                    ),
+                  )}
+                </Txt>
               </Rise>
             ),
           )}

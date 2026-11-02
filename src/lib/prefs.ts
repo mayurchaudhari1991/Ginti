@@ -12,9 +12,12 @@ export type Prefs = {
   aiEnabled: boolean;
   /** Set once the one-time re-sort of "Other" entries has run (v1.2.0). */
   tidiedCategories: boolean;
+  /** Scan for new bank SMS and payment notifications each time Ginti opens. */
+  autoDetect: boolean;
 };
 
 const DEFAULTS: Prefs = {
+  autoDetect: true,
   aiEnabled: true,
   tidiedCategories: false,
   biometricLock: true,

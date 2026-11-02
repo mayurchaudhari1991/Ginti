@@ -38,7 +38,8 @@ export function TxnRow({ txn }: { txn: Txn }) {
       }}
       onLongPress={async () => {
         tap();
-        const action = await choose(title, `${inr(txn.amount)} · ${meta.toLowerCase()}`, [
+        const when = new Date(txn.occurred_at);
+        const action = await choose(title, `${inr(txn.amount)} · ${acc?.name ?? 'Account'} · ${when.toDateString().slice(4, 10)}, ${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`, [
           { label: 'Edit entry', value: 'edit', icon: 'settings', tone: 'plain' },
           { label: 'Delete entry', value: 'delete', icon: 'trash', tone: 'danger' },
           { label: 'Cancel', value: 'cancel', tone: 'cancel' },

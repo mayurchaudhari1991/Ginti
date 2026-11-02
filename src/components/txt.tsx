@@ -1,4 +1,4 @@
-import { StyleSheet, Text, type TextProps } from 'react-native';
+import { StyleSheet, Text, type TextProps, type TextStyle } from 'react-native';
 
 import { C, F } from '@/theme/tokens';
 
@@ -6,8 +6,16 @@ type Variant = 'hero' | 'display' | 'title' | 'body' | 'medium' | 'strong' | 'sm
 
 export type TxtProps = TextProps & { variant?: Variant; color?: string };
 
+const DISPLAY_FONTS: string[] = [F.display, F.displayBold];
+
 export function Txt({ variant = 'body', color, style, ...rest }: TxtProps) {
-  return <Text style={[styles[variant], color ? { color } : null, style]} {...rest} />;
+  const flat: TextStyle = StyleSheet.flatten([styles[variant], color ? { color } : null, style]) ?? {};
+  // A size bumped above the variant's without a matching line height gets its glyphs clipped on
+  // Android (cut-off "91%", commas that look like full stops). Give every size room for its glyphs;
+  // Unbounded's tall caps need more than the body font.
+  const cramped = !!flat.fontSize && (!flat.lineHeight || flat.lineHeight < flat.fontSize * 1.15);
+  const ratio = DISPLAY_FONTS.includes(flat.fontFamily ?? '') ? 1.3 : 1.35;
+  return <Text style={cramped ? { ...flat, lineHeight: Math.ceil(flat.fontSize! * ratio) } : flat} {...rest} />;
 }
 
 const styles = StyleSheet.create({

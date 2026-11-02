@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import Animated, { css } from 'react-native-reanimated';
+import Animated, { css, cubicBezier } from 'react-native-reanimated';
 
 import { confirm, notify } from '@/components/dialog';
 import { CATEGORY_ICONS, Icon } from '@/components/icon';
@@ -20,6 +20,7 @@ const COLORS = ['#FF8A4C', '#5B8CFF', '#FF5FA2', '#4CC9FF', '#FFD23F', '#3DDC97'
 type Kind = 'expense' | 'income';
 type Draft = { id?: string; name: string; color: string; icon: string; kind: Kind; budget: string };
 
+const SHEET_EASING = cubicBezier(0.2, 0.9, 0.3, 1);
 const slideUp = css.keyframes({ from: { transform: [{ translateY: 400 }] }, to: { transform: [{ translateY: 0 }] } });
 
 export default function Categories() {
@@ -136,7 +137,7 @@ function CategoryEditor({ draft: initial, existing, count, onClose }: { draft: D
     <Modal transparent visible statusBarTranslucent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
-        <Animated.View style={[styles.sheet, { animationName: slideUp, animationDuration: 320, animationTimingFunction: 'cubic-bezier(0.2, 0.9, 0.3, 1)' }]}>
+        <Animated.View style={[styles.sheet, { animationName: slideUp, animationDuration: 320, animationTimingFunction: SHEET_EASING }]}>
           <View style={styles.grab} />
           <ScrollView contentContainerStyle={{ gap: 16 }} keyboardShouldPersistTaps="handled">
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>

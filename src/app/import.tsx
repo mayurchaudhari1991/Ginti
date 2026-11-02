@@ -1,17 +1,19 @@
 import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { AppState, Pressable, StyleSheet, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { choose, confirm, notify } from '@/components/dialog';
 import { Icon } from '@/components/icon';
 import { Pulse, Rise } from '@/components/motion';
+import { RangePicker } from '@/components/range-picker';
 import { Txt } from '@/components/txt';
 import { Button, Card, CategoryBadge, Empty, IconButton, Screen, tap } from '@/components/ui';
 import { inr, timeLabel } from '@/lib/format';
 import {
   inboxAvailable,
   inboxPermissions,
+  lastScanAt,
   openNotificationAccess,
   removePending,
   requestSmsPermission,
@@ -19,7 +21,9 @@ import {
   updatePending,
   usePendingImports,
   type InboxPermissions,
+  type ScanRange,
 } from '@/lib/inbox';
+import { setPrefs, usePrefs } from '@/lib/prefs';
 import type { Detected } from '@/lib/inbox-parse';
 import { useLedger } from '@/lib/ledger';
 import { C, F } from '@/theme/tokens';
@@ -29,7 +33,9 @@ export default function ImportScreen() {
   const pending = usePendingImports();
   const [perms, setPerms] = useState<InboxPermissions>(() => inboxPermissions());
   const [scanning, setScanning] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { autoDetect } = usePrefs();
   const [unchecked, setUnchecked] = useState<Set<string>>(() => new Set(pending.filter((p) => p.maybeDuplicate).map((p) => p.ref)));
 
   // Permissions change in system settings, so re-read them whenever we come back.
@@ -41,18 +47,20 @@ export default function ImportScreen() {
     }, []),
   );
 
-  async function scan(lookbackDays?: number) {
+  async function scan(range: ScanRange | undefined, label: string) {
+    setPicking(false);
     setScanning(true);
     try {
-      const n = await scanInbox(accounts, categories, txns, { lookbackDays });
+      const n = await scanInbox(accounts, categories, txns, range);
       Haptics.notificationAsync(n ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(() => {});
-      if (!n)
-        notify(
-          'All caught up',
-          lookbackDays
-            ? `No payments in the last ${lookbackDays} days that are not already in your ledger or waiting below.`
-            : 'No new payments since the last scan. Use "Look back 60 days" to check older texts.',
-        );
+      // "this month" reads naturally mid-sentence; a date range like "1 Nov – 2 Nov" keeps its capitals.
+      const period = /\d/.test(label) ? label : label.toLowerCase();
+      notify(
+        n ? `Found ${n} new` : 'All caught up',
+        n
+          ? `${n} ${n === 1 ? 'payment' : 'payments'} from ${period} ${n === 1 ? 'is' : 'are'} waiting below for review.`
+          : `No payments from ${period} that are not already in your ledger or waiting below.`,
+      );
     } catch (e) {
       notify('Scan failed', e instanceof Error ? e.message : String(e));
     } finally {
@@ -125,8 +133,8 @@ export default function ImportScreen() {
               onPress={async () => {
                 if (await requestSmsPermission()) {
                   setPerms(inboxPermissions());
-                  // First access: pull in the last two months so the user sees results straight away.
-                  scan(60);
+                  // First access: let the user choose how far back to look.
+                  setPicking(true);
                 }
               }}
             />
@@ -138,13 +146,23 @@ export default function ImportScreen() {
               granted={perms.notifications}
               onPress={openNotificationAccess}
             />
+            <View style={{ height: 1, backgroundColor: '#1A1D27' }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Txt variant="strong">Auto-detect</Txt>
+                <Txt variant="small" style={{ marginTop: 2, lineHeight: 16 }}>
+                  {autoDetect ? 'Checks for new payments each time you open Ginti.' : 'Off: payments are only found when you scan.'}
+                </Txt>
+              </View>
+              <Switch value={autoDetect} onValueChange={(v) => setPrefs({ autoDetect: v })} trackColor={{ true: C.volt, false: C.line2 }} thumbColor={C.ink} />
+            </View>
             <Txt variant="small" style={{ lineHeight: 17 }}>
               Messages are read on this phone only. Just the amount, payee and date go into your ledger, and only after you approve them.
             </Txt>
           </Card>
 
-          <Button title={scanning ? 'Scanning…' : 'Scan for new payments'} icon="scan" onPress={() => scan()} busy={scanning} disabled={!perms.sms && !perms.notifications} />
-          <Button title="Look back 60 days" variant="ghost" icon="calendar" onPress={() => scan(60)} disabled={scanning || !perms.sms} />
+          <Button title={scanning ? 'Scanning…' : 'Scan for payments'} icon="scan" onPress={() => setPicking(true)} busy={scanning} disabled={!perms.sms && !perms.notifications} />
+          <RangePicker visible={picking} lastScan={lastScanAt()} onClose={() => setPicking(false)} onPick={scan} />
         </>
       )}
 

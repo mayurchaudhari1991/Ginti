@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet } from 'react-native';
-import Animated, { css } from 'react-native-reanimated';
+import Animated, { css, cubicBezier } from 'react-native-reanimated';
 
 import { Icon, type IconName } from '@/components/icon';
 import { Txt } from '@/components/txt';
@@ -34,6 +34,8 @@ export function notify(title: string, message?: string) {
   return choose(title, message, [{ label: 'OK', value: undefined, tone: 'primary' }]);
 }
 
+// Reanimated takes curves as cubicBezier(), not CSS "cubic-bezier(...)" strings; a string crashes the app.
+const POP_EASING = cubicBezier(0.2, 0.9, 0.3, 1.2);
 const fadeIn = css.keyframes({ from: { opacity: 0 }, to: { opacity: 1 } });
 const popIn = css.keyframes({ from: { opacity: 0, transform: [{ translateY: 24 }, { scale: 0.96 }] }, to: { opacity: 1, transform: [{ translateY: 0 }, { scale: 1 }] } });
 
@@ -67,7 +69,7 @@ export function DialogHost() {
         <Pressable style={StyleSheet.absoluteFill} onPress={() => close(dismissValue)} accessibilityLabel="Dismiss" />
         <Animated.View
           accessibilityViewIsModal
-          style={[styles.card, { animationName: popIn, animationDuration: 260, animationTimingFunction: 'cubic-bezier(0.2, 0.9, 0.3, 1.2)' }]}>
+          style={[styles.card, { animationName: popIn, animationDuration: 260, animationTimingFunction: POP_EASING }]}>
           <Txt style={styles.title}>{current.title}</Txt>
           {current.message ? <Txt style={styles.message}>{current.message}</Txt> : null}
           <ScrollView style={{ maxHeight: 420, flexGrow: 0 }} contentContainerStyle={stacked ? styles.stack : styles.row} scrollEnabled={stacked}>

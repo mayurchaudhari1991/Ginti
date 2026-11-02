@@ -2,7 +2,7 @@
   "expo": {
     "name": "Ginti",
     "slug": "ginti",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ginti",
@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "app.ginti",
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "backgroundColor": "#C8FF4D",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

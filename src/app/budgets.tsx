@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View, type TextInputInstance } from 'react-native';
+import { Pressable, StyleSheet, TextInput, useWindowDimensions, View, type TextInputInstance } from 'react-native';
 import Animated from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 
@@ -25,6 +25,8 @@ export default function Budgets() {
   const { txns, categories, setCategoryBudget } = useLedger();
   const { monthlyBudget } = usePrefs();
   const [monthly, setMonthly] = useState(String(monthlyBudget));
+  // Three equal columns: screen width minus the 20px side padding and two 10px gaps.
+  const cellWidth = Math.floor((useWindowDimensions().width - 40 - 20) / 3);
   const now = new Date();
   const range = monthRange(now.getFullYear(), now.getMonth());
 
@@ -81,7 +83,7 @@ export default function Budgets() {
         {categories
           .filter((c) => c.kind === 'expense')
           .map((c, i) => (
-            <Rise key={c.id} delay={i * 50} style={styles.gridItem}>
+            <Rise key={c.id} delay={i * 50} style={{ width: cellWidth }}>
               <BudgetCell name={c.name} color={c.color} spent={spentByCat.get(c.id) ?? 0} budget={c.monthly_budget} onSave={(b) => setCategoryBudget(c.id, b)} />
             </Rise>
           ))}
@@ -178,7 +180,6 @@ const styles = StyleSheet.create({
   monthlyRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: C.line },
   monthlyInput: { minWidth: 110, height: 40, borderRadius: 10, backgroundColor: C.ink2, borderWidth: 1, borderColor: C.line2, color: C.text, fontFamily: F.semibold, fontSize: 15, textAlign: 'right', paddingHorizontal: 12 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 10, rowGap: 10 },
-  gridItem: { width: '31%' },
   cell: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 6, alignItems: 'center', gap: 4 },
   limit: {
     marginTop: 4,

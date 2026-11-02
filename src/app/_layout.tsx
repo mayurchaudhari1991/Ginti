@@ -2,7 +2,7 @@ import { InterTight_400Regular, InterTight_500Medium, InterTight_600SemiBold } f
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono';
 import { Unbounded_600SemiBold, Unbounded_700Bold } from '@expo-google-fonts/unbounded';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -10,6 +10,7 @@ import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { DialogHost } from '@/components/dialog';
+import { CrashScreen, SafeBoundary } from '@/components/safe-boundary';
 import { LockScreen } from '@/components/lock-screen';
 import { SplashOverlay } from '@/components/splash';
 import { AuthProvider, useAuth } from '@/lib/auth';
@@ -19,6 +20,11 @@ import { firstName } from '@/lib/user';
 import { C } from '@/theme/tokens';
 
 SplashScreen.preventAutoHideAsync();
+
+// Expo Router renders this for any screen that throws, instead of closing the app.
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  return <CrashScreen message={error.message} onRetry={retry} />;
+}
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -81,7 +87,9 @@ function AppStack() {
       </Stack>
       {signedIn && locked && <LockScreen name={firstName(session)} />}
       <SplashOverlay ready={ready && (!signedIn || !loading)} />
-      <DialogHost />
+      <SafeBoundary fallback="hide">
+        <DialogHost />
+      </SafeBoundary>
     </View>
   );
 }

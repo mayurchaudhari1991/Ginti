@@ -74,18 +74,29 @@ export function openNotificationAccess() {
  * Reads new bank SMS and captured payment notifications, and queues any payments not already in the
  * ledger for review. Returns how many new items were queued.
  */
-export async function scanInbox(accounts: Account[], categories: Category[], txns: Txn[], opts: { lookbackDays?: number } = {}) {
+export type ScanRange = { from: number; to: number };
+
+/** When the last scan ran; null before the first one. */
+export function lastScanAt() {
+  const v = store?.getItem(LAST_SCAN);
+  return v ? Number(v) : null;
+}
+
+export async function scanInbox(accounts: Account[], categories: Category[], txns: Txn[], range?: ScanRange) {
   if (!GintiInbox) return 0;
   const now = Date.now();
   const canReadSms = GintiInbox.hasSmsPermission();
-  const since = opts.lookbackDays ? now - opts.lookbackDays * 86400000 : Number(store?.getItem(LAST_SCAN) ?? now - FIRST_SCAN_DAYS * 86400000);
+  // No range: everything since the last scan (the automatic, incremental case).
+  const from = range?.from ?? lastScanAt() ?? now - FIRST_SCAN_DAYS * 86400000;
+  const to = range?.to ?? now;
   const [sms, notes] = await Promise.all([
-    canReadSms ? GintiInbox.readSms(since, 1000) : Promise.resolve([]),
+    canReadSms ? GintiInbox.readSms(from, 3000) : Promise.resolve([]),
     Promise.resolve(GintiInbox.drainNotifications()),
   ]);
+  const inRange = (m: { time: number }) => m.time >= from && m.time <= to;
   const parsed = [
-    ...sms.map((m) => parseMessage(m, 'sms', accounts, categories)),
-    ...notes.map((m) => parseMessage(m, 'notification', accounts, categories)),
+    ...sms.filter(inRange).map((m) => parseMessage(m, 'sms', accounts, categories)),
+    ...notes.filter(inRange).map((m) => parseMessage(m, 'notification', accounts, categories)),
   ].filter((d): d is Detected => d != null);
 
   const known = new Set([...pending.map((p) => p.ref), ...txns.map((t) => t.external_ref).filter(Boolean)]);
@@ -98,7 +109,8 @@ export async function scanInbox(accounts: Account[], categories: Category[], txn
 
   // Only move the marker once SMS were actually readable; otherwise a scan before permission was
   // granted would hide all the earlier bank texts from every later scan.
-  if (canReadSms) store?.setItem(LAST_SCAN, String(now));
+  // A custom range in the past doesn't advance it, so automatic scans still catch everything newer.
+  if (canReadSms && to >= now - 60000) store?.setItem(LAST_SCAN, String(now));
   if (fresh.length) setPending(dedupe([...fresh, ...pending]));
   return fresh.length;
 }

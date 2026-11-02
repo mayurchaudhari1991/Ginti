@@ -37,11 +37,12 @@ export default function Insights() {
     const range = period === 'month' ? monthRange(y, m) : yearRange(y);
     const prev = period === 'month' ? monthRange(p.year, p.month) : yearRange(y - 1);
     const months = byMonth(txns, y, accountIds);
-    const elapsed = months.slice(0, m + 1);
-    const avg = elapsed.reduce((s, v) => s + v, 0) / elapsed.length;
-    // Forecast the current month by pacing what has been spent so far.
-    const dayFrac = now.getDate() / new Date(y, m + 1, 0).getDate();
-    const paced = months[m] / Math.max(dayFrac, 0.1);
+    // Average only months that have entries: months before someone started using Ginti aren't ₹0 months.
+    const active = months.slice(0, m + 1).filter((v) => v > 0);
+    const avg = active.length ? active.reduce((s, v) => s + v, 0) / active.length : 0;
+    // Pace the current month from what's been spent so far, but only once a week of data exists.
+    const daysIn = new Date(y, m + 1, 0).getDate();
+    const paced = now.getDate() >= 7 ? months[m] / (now.getDate() / daysIn) : null;
     return {
       total: sum(expenses(txns, range, accountIds)),
       months,
@@ -95,7 +96,9 @@ export default function Insights() {
             </View>
             <Txt variant="small" style={{ textAlign: 'right' }}>
               Avg {inrShort(data.avg)}/mo{'\n'}
-              <Txt style={{ fontSize: 12, color: C.ionText }}>{monthName(m)} pace {inrShort(data.paced)}</Txt>
+              <Txt style={{ fontSize: 12, color: C.ionText }}>
+                {data.paced != null ? `${monthName(m)} heading for ${inrShort(data.paced)}` : `${monthName(m)} forecast after day 7`}
+              </Txt>
             </Txt>
           </View>
           <View style={{ marginTop: 16 }}>

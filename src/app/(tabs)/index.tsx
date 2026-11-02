@@ -21,21 +21,21 @@ import { C, F } from '@/theme/tokens';
 export default function Home() {
   const { session } = useAuth();
   const { accounts, categories, txns, loading, refresh, error } = useLedger();
-  const { monthlyBudget } = usePrefs();
+  const { monthlyBudget, autoDetect } = usePrefs();
   const name = firstName(session) ?? 'there';
   const pending = usePendingImports();
   const ready = !loading && accounts.length > 0;
 
-  // Pick up new bank SMS and payment notifications on launch and whenever the app comes back.
+  // With auto-detect on, pick up new bank SMS and payment notifications on launch and whenever the app comes back.
   const scan = useEffectEvent(() => {
     scanInbox(accounts, categories, txns).catch(() => {});
   });
   useEffect(() => {
-    if (!inboxAvailable || !ready) return;
+    if (!inboxAvailable || !ready || !autoDetect) return;
     scan();
     const sub = AppState.addEventListener('change', (s) => s === 'active' && scan());
     return () => sub.remove();
-  }, [ready]);
+  }, [ready, autoDetect]);
 
   const now = new Date();
   const y = now.getFullYear();
